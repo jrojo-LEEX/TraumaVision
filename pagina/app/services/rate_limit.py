@@ -1,9 +1,8 @@
 """
 rate_limit.py — Limitador de tasa por usuario, en memoria.
 
-Ventana deslizante simple. Se usa para el envío de informes por email, que es
-el endpoint que saca datos de paciente fuera del sistema: sin tope servía como
-canal de exfiltración y como relay de spam usando la cuenta SMTP configurada.
+Ventana deslizante simple. Se usa para limitar los intentos de login por IP:
+sin tope, la contraseña de una cuenta se podía adivinar por fuerza bruta.
 
 Al ser en memoria, el contador se reinicia cuando se reinicia el proceso. Es
 proporcionado para un prototipo de un solo worker; un despliegue con varios
@@ -40,15 +39,6 @@ def check_and_consume(clave: str, limite: int, ventana_segundos: int = 3600) -> 
 
         usos.append(ahora)
         return True, limite - len(usos)
-
-
-def segundos_hasta_liberar(clave: str, ventana_segundos: int = 3600) -> int:
-    """Cuántos segundos faltan para que se libere el cupo más viejo."""
-    with _lock:
-        usos = _ventanas.get(clave)
-        if not usos:
-            return 0
-        return max(0, int(usos[0] + ventana_segundos - time.time()))
 
 
 def reset(clave: str | None = None) -> None:

@@ -70,15 +70,6 @@ CORS_ORIGINS = [
 # --- Base de datos ---
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR / 'traumavision.db'}")
 
-# --- Email ---
-SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_EMAIL = os.getenv("SMTP_EMAIL", "")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
-# Envíos de informe por hora y por usuario. El endpoint manda imágenes de
-# pacientes: sin tope sirve como canal de exfiltración y como relay de spam.
-EMAIL_RATE_LIMIT_PER_HOUR = int(os.getenv("EMAIL_RATE_LIMIT_PER_HOUR", "10"))
-
 # ── Preprocesamiento ──────────────────────────────────────────────────────────
 # El dataset de entrenamiento se generó aplicando CLAHE a cada imagen
 # (datos/grazpedwri/armar_dataset.py, clipLimit=2.0, tileGridSize=8x8).
@@ -171,8 +162,8 @@ def es_modelo_vigente(model_version) -> bool:
 
 # El `report_text` guardado por un modelo anterior es el informe de su época:
 # cita probabilidades «calibradas» (Platt, isotónica) y umbrales que el
-# sistema ya no sostiene. No se muestra en la web, el PDF, el correo ni la
-# API; en la base y en la exportación CSV queda sin cambios.
+# sistema ya no sostiene. No se muestra en la web ni en el PDF; en la base y
+# en la exportación CSV queda sin cambios.
 NOTA_INFORME_ANTERIOR = (
     "El informe de texto original de este análisis lo generó un modelo anterior "
     "y no se muestra. Se conserva sin cambios en la base y en la exportación CSV."

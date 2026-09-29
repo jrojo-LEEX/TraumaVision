@@ -44,29 +44,6 @@ class User(Base):
 
     analyses = relationship("Analysis", back_populates="user")
     studies = relationship("Study", back_populates="user")
-    api_keys = relationship("ApiKey", back_populates="owner")
-
-
-class ApiKey(Base):
-    """API key para integración HIS/PACS.
-
-    Cada key pertenece a un usuario: los análisis creados con ella quedan a
-    nombre de ese usuario, y sólo esa key puede volver a leerlos.
-    """
-
-    __tablename__ = "api_keys"
-
-    id = Column(Integer, primary_key=True, index=True)
-    key_hash = Column(String(64), unique=True, nullable=False, index=True)  # SHA-256 hex
-    label = Column(String(100))
-    # Sin esto, cualquier key podía crear keys nuevas: no había diferencia real
-    # entre require_api_key y require_admin_key.
-    is_admin = Column(Boolean, nullable=False, default=False)
-    is_active = Column(Boolean, nullable=False, default=True)
-    owner_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    created_at = Column(DateTime, default=_utcnow)
-
-    owner = relationship("User", back_populates="api_keys")
 
 
 class Study(Base):
@@ -167,4 +144,4 @@ class Feedback(Base):
 
 # Registro explícito de todas las tablas, para que create_all() nunca dependa
 # del efecto colateral de importar el módulo.
-ALL_MODELS = (User, ApiKey, Study, Analysis, DetectionBox, Feedback)
+ALL_MODELS = (User, Study, Analysis, DetectionBox, Feedback)

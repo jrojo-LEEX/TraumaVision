@@ -7,7 +7,6 @@ analysis_routes.py — Rutas de análisis de radiografías.
   GET  /analysis/history             historial del usuario
   GET  /analysis/{id}/results        resultado guardado
   GET  /analysis/{id}/pdf            informe en PDF
-  POST /analysis/{id}/email          envía el informe por email
   GET  /analysis/study/{id}          resultado de un estudio
   GET  /analysis/imagen/{archivo}    sirve una imagen, previa verificación
 
@@ -34,7 +33,6 @@ from app.database.models import User
 from app.dependencies.auth import require_user
 from app.dependencies.csrf import get_csrf_token, verify_csrf
 from app.plantillas import crear_templates
-from app.services.rate_limit import check_and_consume, segundos_hasta_liberar
 from app.services.routing_service import (
     calculate_urgency,
     imagen_mas_urgente,
@@ -46,7 +44,6 @@ from config.settings import (
     APP_NAME,
     CONFIDENCE_THRESHOLD,
     DEFAULT_REGION,
-    EMAIL_RATE_LIMIT_PER_HOUR,
     MODELO_VIGENTE,
     LEGAL_DISCLAIMER,
     MAX_UPLOAD_SIZE_MB,
@@ -54,7 +51,6 @@ from config.settings import (
     MODEL_METADATA,
     REGION_AVAILABLE,
     REGION_LABELS,
-    SMTP_EMAIL,
     UPLOADS_DIR,
     es_modelo_vigente,
     texto_del_informe,
@@ -76,7 +72,6 @@ templates = crear_templates()
 HISTORIAL_MAX_FILAS = 500
 
 _ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/bmp", "image/tiff", "application/dicom"}
-_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
 _SAFE_FILENAME_RE = re.compile(r"^[A-Za-z0-9_\-]+\.(png|jpg|jpeg)$")
 
 
@@ -379,25 +374,12 @@ async def serve_image(
 async def view_analysis(
     analysis_id: int,
     request: Request,
-    email_sent: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(require_user),
 ):
     analysis = crud.get_analysis_for_user(db, analysis_id, user.id)
     if not analysis:
         raise HTTPException(status_code=404, detail="Análisis no encontrado.")
-
-    email_message = None
-    if email_sent == "1":
-        email_message = "Informe enviado correctamente."
-    elif email_sent == "0":
-        email_message = "No se pudo enviar el email. Revisá la configuración SMTP en .env."
-    elif email_sent == "limit":
-        espera = segundos_hasta_liberar(f"email:{user.id}")
-        email_message = (
-            f"Alcanzaste el límite de {EMAIL_RATE_LIMIT_PER_HOUR} envíos por hora. "
-            f"Volvé a intentar en {espera // 60 + 1} minuto(s)."
-        )
 
     boxes = crud.get_boxes_by_analysis(db, analysis.id)
     significativas = [b for b in boxes if b.confidence >= ABNORMAL_THRESHOLD]
@@ -438,8 +420,6 @@ async def view_analysis(
             # alcance se atribuyen al modelo vigente, no a este resultado.
             "modelo_anterior": _modelo_anterior(analysis.anatomical_region, analysis.model_version),
             "feedback": crud.get_feedback_by_analysis(db, analysis.id),
-            "email_message": email_message,
-            "email_enabled": bool(SMTP_EMAIL),
         },
     )
 
@@ -505,72 +485,6 @@ async def download_pdf(
         BytesIO(pdf_bytes),
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename=traumavision_informe_{analysis.id}.pdf"},
-    )
-
-
-@router.post("/{analysis_id}/email")
-async def send_email_report(
-    request: Request,
-    analysis_id: int,
-    db: Session = Depends(get_db),
-    user: User = Depends(require_user),
-    _: None = Depends(verify_csrf),
-):
-    analysis = crud.get_analysis_for_user(db, analysis_id, user.id)
-    if not analysis:
-        raise HTTPException(status_code=404, detail="Análisis no encontrado.")
-
-    form_data = await request.form()
-    to_email = (form_data.get("to_email") or "").strip()
-    if not _EMAIL_RE.match(to_email):
-        return RedirectResponse(url=f"/analysis/{analysis_id}/results?email_sent=0", status_code=303)
-
-    # Tope por usuario: el endpoint saca imágenes de paciente del sistema.
-    permitido, _ = check_and_consume(f"email:{user.id}", EMAIL_RATE_LIMIT_PER_HOUR)
-    if not permitido:
-        return RedirectResponse(url=f"/analysis/{analysis_id}/results?email_sent=limit", status_code=303)
-
-    from app.services.email_service import send_report_email
-    from src.reports.generator import generate_pdf_report
-
-    original, anotada = _cargar_imagenes(analysis)
-    pdf_bytes = generate_pdf_report(
-        original_image=original,
-        annotated_image=anotada,
-        report_text=_texto_del_informe(analysis),
-        analysis_id=str(analysis.id),
-        doctor_name=user.name,
-        # La región del ANÁLISIS, no la del modelo vivo: un informe generado
-        # con un modelo retirado no puede exhibir las métricas del actual.
-        region=analysis.anatomical_region,
-        created_at=analysis.created_at,
-        # Y su modelo: uno de muñeca hecho con un modelo anterior lo declara.
-        model_version=analysis.model_version,
-    )
-
-    # SMTP es un socket bloqueante (con timeout, pero de 20 s): fuera del
-    # bucle por el mismo motivo que la inferencia. `analysis_id` y `usuario`
-    # van al registro de auditoría del servicio, no al correo.
-    enviado = await run_in_threadpool(
-        send_report_email,
-        to_email=to_email,
-        subject=f"[TraumaVision AI] Informe de análisis #{analysis.id}",
-        body_text=(
-            f"Adjunto el informe del análisis #{analysis.id} generado por TraumaVision AI.\n"
-            f"Solicitado por: {user.name}\n\n"
-            f"{_texto_del_informe(analysis)}\n\n"
-            "AVISO: informe generado por un sistema de asistencia. Debe ser "
-            "interpretado exclusivamente por un profesional médico matriculado."
-        ),
-        pdf_bytes=pdf_bytes,
-        pdf_filename=f"traumavision_informe_{analysis.id}.pdf",
-        analysis_id=analysis.id,
-        usuario=user.email,
-    )
-
-    return RedirectResponse(
-        url=f"/analysis/{analysis_id}/results?email_sent={'1' if enviado else '0'}",
-        status_code=303,
     )
 
 

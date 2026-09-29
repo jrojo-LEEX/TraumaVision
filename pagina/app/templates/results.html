@@ -266,48 +266,12 @@
       </div>
     </details>
 
-    {% if email_message %}
-    <div class="alert {% if 'correctamente' in email_message %}alert-info{% else %}alert-error{% endif %}"
-         style="margin-top:var(--s-5);">
-      {{ m.icon('info') }}<div>{{ email_message }}</div>
-    </div>
-    {% endif %}
-
     <div class="rd-actions">
       <a href="/analysis/{{ analysis_id }}/pdf" class="btn btn-sm btn-primary">{{ m.icon('file') }} Descargar PDF</a>
       <a href="/analysis/upload" class="btn btn-sm btn-secondary">{{ m.icon('upload') }} Nuevo análisis</a>
       <a href="/analysis/history" class="btn btn-sm btn-secondary">{{ m.icon('back') }} Historial</a>
-      {% if email_enabled %}
-      <button type="button" class="btn btn-sm btn-secondary"
-              onclick="document.getElementById('email-modal').classList.add('open')">
-        Enviar por email
-      </button>
-      {% endif %}
     </div>
   </aside>
 </div>
 
-{% if email_enabled %}
-<div id="email-modal" class="modal-overlay"
-     onclick="if(event.target===this)this.classList.remove('open')">
-  <div class="modal-box" role="dialog" aria-modal="true" aria-label="Enviar informe por email">
-    <h3>Enviar informe por email</h3>
-    <p class="field-hint" style="margin-bottom:var(--s-4);">
-      El informe contiene la imagen del estudio. Verificá el destinatario antes de enviar.
-    </p>
-    <form action="/analysis/{{ analysis_id }}/email" method="post">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <div class="field-group">
-        <label class="field-label" for="to_email">Dirección de email</label>
-        <input type="email" name="to_email" id="to_email" required placeholder="medico@hospital.com">
-      </div>
-      <div class="modal-actions">
-        <button type="button" class="btn btn-secondary"
-                onclick="document.getElementById('email-modal').classList.remove('open')">Cancelar</button>
-        <button type="submit" class="btn btn-primary">Enviar</button>
-      </div>
-    </form>
-  </div>
-</div>
-{% endif %}
 {% endblock %}

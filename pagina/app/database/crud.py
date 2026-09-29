@@ -14,8 +14,8 @@ from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
-from app.database.models import Analysis, ApiKey, DetectionBox, Feedback, Study, User
-from app.security import generate_api_key, hash_api_key, hash_password, verify_password
+from app.database.models import Analysis, DetectionBox, Feedback, Study, User
+from app.security import hash_password, verify_password
 from config.settings import VERSIONES_VIGENTES
 
 
@@ -314,54 +314,3 @@ def get_analyses_by_study(db: Session, study_id: int) -> list[Analysis]:
         .order_by(Analysis.id.asc())
         .all()
     )
-
-
-# === API KEYS ===
-
-def create_api_key(
-    db: Session,
-    label: str,
-    owner_user_id: int,
-    is_admin: bool = False,
-) -> tuple[ApiKey, str]:
-    """Crea una API key. Devuelve (registro, key en texto plano).
-
-    La key en claro se muestra una sola vez; en la base sólo queda su SHA-256.
-    """
-    raw_key = generate_api_key()
-    api_key = ApiKey(
-        key_hash=hash_api_key(raw_key),
-        label=label,
-        owner_user_id=owner_user_id,
-        is_admin=is_admin,
-        is_active=True,
-    )
-    db.add(api_key)
-    db.commit()
-    db.refresh(api_key)
-    return api_key, raw_key
-
-
-def verify_api_key(db: Session, raw_key: str) -> Optional[ApiKey]:
-    """Devuelve el registro si la key es válida y está activa."""
-    return (
-        db.query(ApiKey)
-        .filter(ApiKey.key_hash == hash_api_key(raw_key), ApiKey.is_active.is_(True))
-        .first()
-    )
-
-
-def get_active_api_keys(db: Session, owner_user_id: Optional[int] = None) -> list[ApiKey]:
-    q = db.query(ApiKey).filter(ApiKey.is_active.is_(True))
-    if owner_user_id is not None:
-        q = q.filter(ApiKey.owner_user_id == owner_user_id)
-    return q.all()
-
-
-def deactivate_api_key(db: Session, key_id: int) -> Optional[ApiKey]:
-    api_key = db.query(ApiKey).filter(ApiKey.id == key_id).first()
-    if api_key:
-        api_key.is_active = False
-        db.commit()
-        db.refresh(api_key)
-    return api_key

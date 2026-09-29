@@ -2052,35 +2052,6 @@ select {
   word-break: break-word;
 }
 
-/* ═══ 28. Modal ═══ */
-.modal-overlay {
-  display: none;
-  opacity: 0;
-  position: fixed; inset: 0;
-  background: rgba(26,16,64,.42);
-  backdrop-filter: blur(3px);
-  z-index: 1000;
-  align-items: center; justify-content: center;
-  padding: var(--s-5);
-  transition: opacity .16s var(--ease), display .16s allow-discrete;
-}
-.modal-overlay.open { display: flex; opacity: 1; }
-@starting-style { .modal-overlay.open { opacity: 0; } }
-.modal-box {
-  background: var(--surface-1);
-  border: 1px solid var(--line-2);
-  border-radius: var(--r-lg);
-  padding: var(--s-6);
-  max-width: 440px; width: 100%;
-  box-shadow: var(--shadow);
-}
-/* El modal no cuelga de ningún disparador, así que escala desde su centro.
-   Nunca desde 0: nada aparece de la nada. */
-.modal-overlay.open .modal-box { transform: none; transition: transform .2s var(--ease); }
-@starting-style { .modal-overlay.open .modal-box { transform: scale(.97); } }
-.modal-box h3 { margin-bottom: var(--s-4); }
-.modal-actions { display: flex; gap: var(--s-3); justify-content: flex-end; margin-top: var(--s-5); }
-
 /* ═══ 29. Footer ═══ */
 /* El pie es CROMO, igual que el membrete: la hoja gris queda encerrada
    arriba y abajo por blanco. Sin filete — el salto de valor ya es el

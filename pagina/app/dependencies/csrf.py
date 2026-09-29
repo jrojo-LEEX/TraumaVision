@@ -6,13 +6,14 @@ La sesión vive en una cookie. El navegador la manda automáticamente en toda
 petición al dominio, incluso si la petición la originó otra página. Sin esta
 protección, un sitio cualquiera podía incluir:
 
-    <form action="http://localhost:8000/analysis/12/email" method="post">
-      <input name="to_email" value="atacante@ejemplo.com">
+    <form action="http://localhost:8000/feedback/submit" method="post">
+      <input name="analysis_id" value="12">
+      <input name="agreed" value="false">
     </form>
     <script>document.forms[0].submit()</script>
 
-y un médico logueado que visitara esa página enviaba el informe de un paciente
-sin enterarse. Lo mismo con el feedback o el logout.
+y un médico logueado que visitara esa página registraba una opinión sobre un
+análisis sin enterarse. Lo mismo con la subida de estudios o el logout.
 
 CÓMO FUNCIONA
 Se genera un token aleatorio por sesión, se incrusta como campo oculto en cada

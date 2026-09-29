@@ -49,17 +49,3 @@ def verify_password(password: str, stored: str) -> bool:
 
     digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
     return hmac.compare_digest(digest, expected)
-
-
-def hash_api_key(raw_key: str) -> str:
-    """SHA-256 hex de una API key.
-
-    Las API keys son aleatorias de 256 bits, así que no necesitan derivación
-    lenta: no hay espacio de búsqueda que un atacante pueda recorrer.
-    """
-    return hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
-
-
-def generate_api_key() -> str:
-    """Genera una API key nueva (64 caracteres hexadecimales)."""
-    return secrets.token_hex(32)

@@ -184,9 +184,7 @@ _DETALLES_GENERICOS_EN = {
 
 
 def _quiere_html(request: Request) -> bool:
-    """Si el que pide es un navegador, y no un cliente de la API."""
-    if request.url.path.startswith("/api/"):
-        return False
+    """Si el que pide es un navegador (y no, por ejemplo, un fetch de JSON)."""
     return "text/html" in request.headers.get("accept", "")
 
 
@@ -205,7 +203,7 @@ async def redirect_o_error(request: Request, exc: HTTPException):
     con la identidad del sistema y una salida. Antes cualquier URL mal
     tipeada devolvía `{"detail":"Not Found"}` en crudo, sin estilo ni
     navegación: en una demostración eso rompe la ilusión entera.
-    La API sigue recibiendo JSON.
+    Un pedido que no acepta HTML sigue recibiendo JSON.
     """
     if exc.status_code == 303 and "location" in {k.lower() for k in (exc.headers or {})}:
         destino = next(v for k, v in exc.headers.items() if k.lower() == "location")
@@ -308,7 +306,6 @@ async def aviso_legal(request: Request):
 from app.routes import (  # noqa: E402
     admin_routes,
     analysis_routes,
-    api_routes,
     auth_routes,
     dashboard_routes,
     feedback_routes,
@@ -319,7 +316,6 @@ app.include_router(analysis_routes.router, prefix="/analysis", tags=["Análisis"
 app.include_router(feedback_routes.router, prefix="/feedback", tags=["Feedback"])
 app.include_router(dashboard_routes.router, prefix="/dashboard", tags=["Dashboard"])
 app.include_router(admin_routes.router, tags=["Administración"])
-app.include_router(api_routes.router)  # prefijo /api/v1 definido en el router
 
 
 if __name__ == "__main__":

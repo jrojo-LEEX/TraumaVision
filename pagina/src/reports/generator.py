@@ -156,7 +156,7 @@ def generate_pdf_report(
     """
     Genera un informe PDF con los resultados del análisis.
 
-    Retorna los bytes del PDF (para descarga o envío por email).
+    Retorna los bytes del PDF, para la descarga.
     """
     buffer = BytesIO()
     doc = SimpleDocTemplate(
