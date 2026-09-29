@@ -32,7 +32,7 @@ venv\Scripts\python.exe modelo\test_interno.py
 3. `modelo/test_interno.py` — test de GRAZPEDWRI; escribe `modelo/resultados/metricas.json`, que usa la página.
 4. `datos/pediurf/sortear_muestra.py` — sortea los casos de PediURF (semilla 0).
 5. `datos/pediurf/recortar.py` — recorta la muñeca a partir de `datos/pediurf/puntos.csv`.
-6. `modelo/test_externo.py` — test de PediURF por caso.
+6. `modelo/test_externo.py` — test de PediURF por caso y por imagen; escribe `modelo/resultados/metricas_externo.json`, que usa la página.
 
 ## Resultados (umbral 0,22)
 
