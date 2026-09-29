@@ -127,26 +127,3 @@ def auth_client(client, users):
     assert r.status_code == 303, f"El login falló: {r.status_code}"
     client.headers["X-CSRF-Token"] = leer_csrf(client)
     return client
-
-
-@pytest.fixture(scope="function")
-def other_client(engine, users):
-    """Segundo cliente, logueado como el otro usuario."""
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-    def override_get_db():
-        db = TestingSessionLocal()
-        try:
-            yield db
-        finally:
-            db.close()
-
-    app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app, follow_redirects=False) as c:
-        r = c.post(
-            "/login",
-            data={"email": OTHER_USER["email"], "password": OTHER_USER["password"]},
-        )
-        assert r.status_code == 303
-        c.headers["X-CSRF-Token"] = leer_csrf(c)
-        yield c
