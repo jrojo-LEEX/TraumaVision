@@ -190,7 +190,7 @@ def texto_del_informe(model_version, report_text) -> str:
 
 # Metadata para la UI de selección.
 #
-# CADA NÚMERO DE ACÁ TIENE UN ARTEFACTO, y tests/test_metadata_vs_artefactos.py
+# CADA NÚMERO DE ACÁ TIENE UN ARTEFACTO, y tests/test_pagina.py
 # comprueba que coincidan. Si se re-mide, se cambian los dos o el test avisa.
 #
 #   Todos salen de modelo/resultados/metricas.json, que escribe
