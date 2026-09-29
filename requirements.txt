@@ -1,0 +1,47 @@
+# ============================================
+# Dependencias — TraumaVision AI
+# ============================================
+# Instalar con: pip install -r requirements.txt
+#
+# Probado sobre Python 3.13 con CUDA 12.4. Para GPU, instalar torch primero
+# desde el índice de PyTorch:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+
+# --- Framework web ---
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+jinja2>=3.1.2
+python-multipart>=0.0.9
+itsdangerous>=2.1.0          # Firma del cookie de sesión (SessionMiddleware)
+
+# --- Detección (motor del sistema) ---
+ultralytics>=8.3.0           # YOLOv8 — núcleo de la inferencia
+torch>=2.4.0
+torchvision>=0.19.0
+
+# --- Procesamiento de imágenes ---
+opencv-python>=4.10.0
+Pillow>=10.4.0
+numpy>=1.26.0
+pydicom>=2.4.0               # Lectura de DICOM (.dcm)
+pylibjpeg>=2.0.0             # Decodificación de DICOM comprimido
+pylibjpeg-libjpeg>=2.1.0
+
+# --- Base de datos ---
+sqlalchemy>=2.0.0
+
+# --- Generación de reportes PDF ---
+reportlab>=4.2.0
+
+# --- Configuración ---
+python-dotenv>=1.0.0
+PyYAML>=6.0                  # Lectura de modelo/fracturas.yaml
+
+# --- Análisis y métricas (scripts de evaluación, no la app) ---
+pandas>=2.2.0
+scikit-learn>=1.5.0
+
+# --- Testing ---
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+httpx>=0.27.0                # Requerido por fastapi.testclient

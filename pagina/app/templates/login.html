@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+
+{% block title %}Iniciar sesión · {{ app_name }}{% endblock %}
+
+{% block main_class %}login-shell{% endblock %}
+
+{% block content %}
+<div class="login-card">
+  <div class="login-head">
+    <span class="login-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3.5c-1.6 0-2.6 1-2.6 2.2 0 .9.5 1.4.5 2.2 0 1-1 1.5-2 1.5-1.3 0-2.4.9-2.4 2.2 0 1.2 1 2.1 2.3 2.1.6 0 1.1-.2 1.5-.2.8 0 1.2.5 1.2 1.2 0 .7-.4 1.2-.4 2 0 1.2 1 2.1 2.3 2.1"/>
+        <path d="M12 3.5c1.6 0 2.6 1 2.6 2.2 0 .9-.5 1.4-.5 2.2 0 1 1 1.5 2 1.5 1.3 0 2.4.9 2.4 2.2 0 1.2-1 2.1-2.3 2.1-.6 0-1.1-.2-1.5-.2-.8 0-1.2.5-1.2 1.2 0 .7.4 1.2.4 2 0 1.2-1 2.1-2.3 2.1"/>
+      </svg>
+    </span>
+    <h1>{{ app_name }}</h1>
+    <p>Soporte a la decisión clínica · fracturas en muñeca pediátrica</p>
+  </div>
+
+  {% if error %}
+  <div class="alert alert-error">
+    {{ m.icon('alert') }}<div>{{ error }}</div>
+  </div>
+  {% endif %}
+
+  <form action="/login" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="next" value="{{ next }}">
+
+    <div class="field-group">
+      <label class="field-label" for="email">Email</label>
+      <input type="email" name="email" id="email" required autofocus
+             autocomplete="username" value="{{ email|default('') }}"
+             placeholder="usuario@traumavision.demo">
+    </div>
+
+    <div class="field-group">
+      <label class="field-label" for="password">Contraseña</label>
+      <input type="password" name="password" id="password" required
+             autocomplete="current-password" placeholder="Tu contraseña">
+    </div>
+
+    <button type="submit" class="btn btn-primary btn-lg" style="width:100%;">Ingresar</button>
+  </form>
+
+  <p class="login-note">Acceso para profesionales de la salud.</p>
+
+  {% if demo_mode and demo_users %}
+  <details class="demo-panel">
+    <summary>{{ m.icon('chevron', 'chev') }} Cuentas de demostración</summary>
+    {# La cuenta de administración no viene en `demo_users` a propósito: puede
+       exportar la base entera y su clave no se publica en la portada. #}
+    <p class="demo-note">Cuentas de prueba para la demostración. La cuenta de administración no se publica acá.</p>
+    <div class="demo-list">
+      {% for u in demo_users %}
+      <button type="button" class="demo-row"
+              onclick="usarCuenta('{{ u.email }}', '{{ u.password }}')"
+              title="Completar el formulario con esta cuenta">
+        <span class="demo-user">{{ u.name }}</span>
+        {% if u.is_admin %}<span class="nav-user-tag">admin</span>{% endif %}
+        <span class="demo-mail">{{ u.email }}</span>
+        <span class="demo-pass">{{ u.password }}</span>
+      </button>
+      {% endfor %}
+    </div>
+  </details>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function usarCuenta(email, password) {
+  document.getElementById('email').value = email;
+  document.getElementById('password').value = password;
+  document.getElementById('password').focus();
+}
+</script>
+{% endblock %}

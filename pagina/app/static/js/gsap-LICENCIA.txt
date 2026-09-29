@@ -1,0 +1,51 @@
+GSAP — GreenSock Animation Platform
+Copiado al repositorio (vendorizado) el 25/08/2026.
+
+  VERSIÓN:  3.13.0
+  ORIGEN:   https://unpkg.com/gsap@3.13.0/dist/
+  AUTOR:    Jack Doyle — GreenSock / Webflow
+
+POR QUÉ ESTÁ ACÁ Y NO EN UN CDN
+-------------------------------
+La defensa de esta tesis puede darse en un aula sin internet. Un
+`<script src="https://cdn...">` que no resuelve deja la aplicación sin
+movimiento delante del tribunal — y, peor, sin la lectura de la placa. Los
+tres archivos se sirven desde `/static/js/`, igual que las fuentes (§1 de
+la hoja de estilos, que está vendorizada por la misma razón).
+
+ARCHIVOS Y SUMAS DE VERIFICACIÓN (SHA-256)
+------------------------------------------
+  gsap-gsap.min.js           72.435 B  96c01b81f44a3290e2b4532f55e2c9534b2adc43273a19f3756b2cb41f0fd0b6
+  gsap-ScrollTrigger.min.js  44.157 B  308219390e5e3b84cda0c481e70caa9820883ae10bda44e6e9a149a81aac4b3f
+
+Sólo estos dos. El plugin Flip llegó a estar vendorizado y se retiró: la
+única pantalla que lo iba a usar —el reordenamiento de la tabla del
+historial— necesita una política que Flip no tiene (que una fila viaje sólo
+si el desplazamiento es SEGUIBLE; medido, Flip mandaba filas 778 px de una
+punta a la otra de la pantalla). La técnica FLIP quedó escrita a mano con
+tweens del núcleo, en `motion.js` §H, así que no se pierde nada y son 25 KB
+menos que servir en una defensa sin internet.
+
+Se pueden reproducir con:
+  curl -sS -o gsap-gsap.min.js https://unpkg.com/gsap@3.13.0/dist/gsap.min.js
+  sha256sum gsap-gsap.min.js
+
+LICENCIA
+--------
+GSAP Standard "No Charge" License.
+Texto completo: https://gsap.com/community/standard-license/
+
+Resumen en castellano llano, del propio texto de GreenSock: se puede usar el
+código sin cargo en aplicaciones comerciales y no comerciales mientras no se
+le cobre al usuario final una tarifa de ningún tipo por usar el producto ni
+por acceder a alguna de sus partes. Este proyecto es un trabajo académico que
+no cobra acceso a nadie: entra de lleno en el uso permitido.
+
+Desde que Webflow compró GreenSock, TODOS los plugins (incluido ScrollTrigger,
+el que está acá) se distribuyen bajo esta misma licencia sin
+cargo. No hace falta token de autenticación ni membresía Club GSAP; ese
+esquema ya no existe.
+
+Se conservan íntegros los avisos de copyright que cada archivo trae en su
+encabezado, como pide la cláusula III de la licencia. Ningún archivo fue
+modificado: son los binarios tal cual salieron de unpkg.

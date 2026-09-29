@@ -1,0 +1,4585 @@
+/* ======================================================================
+   TraumaVision AI — Sistema visual v4.0 · «Sala limpia»
+   ----------------------------------------------------------------------
+   Herramienta de lectura radiológica. La app dejó de ser oscura: ahora es
+   una SALA LIMPIA. El cambio no es de gusto, es de diagnóstico — con toda
+   la interfaz en gris oscuro, la placa competía contra un fondo del mismo
+   material que ella, y la escala de grises de la radiografía no tenía
+   contra qué recortarse.
+
+   SISTEMA DE VALOR — tres valores, y ninguno de más:
+     blanco  #FFFFFF  = CROMO   (membrete, barra de herramientas, controles)
+     gris    #F0F2F5  = SUELO   (la hoja donde se lee)
+     negro   #000000  = IMAGEN  (la placa; nada más en la app es negro)
+
+   REGLA DE COLOR — se defiende ante un tribunal, así que dice lo que el
+   código HACE y no lo que sería lindo que hiciera. Decía «rojo =
+   prioritario · ámbar = revisar», y era falso: medida contra la hoja, el
+   rojo tenía dos referentes y el ámbar seis. Un estudio podía decir REVISAR
+   en ámbar y tener encima de la placa una caja ROJA — el objeto
+   cromáticamente más fuerte de la pantalla contradiciendo la palabra.
+
+   No se arregló haciendo que la caja siguiera al triage: el color de la
+   caja es información POR DETECCIÓN que el triage del estudio no contiene,
+   y unificarlos habría borrado un dato real. Se arregló diciendo la verdad:
+   son DOS ESCALAS, sobre dos objetos distintos.
+
+     rojo / ámbar SOBRE UNA DETECCIÓN — la placa y la lista de hallazgos:
+       rojo  = esa caja está SOBRE el umbral
+       ámbar = esa caja está BAJO el umbral (y va punteada, para no depender
+               del color)
+     rojo / ámbar SOBRE LA PALABRA del veredicto — el estudio entero:
+       rojo  = PRIORITARIO      ámbar = REVISAR
+     Por eso REVISAR con una caja roja no es una contradicción: son dos
+     afirmaciones sobre dos objetos distintos y las dos son ciertas. LA
+     PALABRA ES EL ÚNICO PORTADOR DEL TRIAGE DEL ESTUDIO. Ninguna barra ni
+     escalera lo porta con su LARGO: el filete que corona la palabra es
+     macizo y de medida fija, repite su color y no codifica nada por su
+     tamaño. Una escala más, con otra unidad, es lo que se retiró.
+
+     ámbar, tercer uso y el único que no es una medición: LA RESERVA
+       CLÍNICA (alcance y limitaciones, registro fuera del dominio
+       validado). Va siempre acompañada del ícono de información: se
+       reconoce por la marca, no sólo por el color.
+
+     azul = INTERACCIÓN, jamás dato. El azul no toca nunca una fila de
+       hallazgo ni un número clínico: es foco, pestaña activa, herramienta
+       activa. Dónde estás, nunca qué encontró.
+
+   FUERA DE ESOS EJES NO HAY COLOR. Se le sacó a tres cosas que lo tenían
+   sin significar nada: el aviso legal del pie (ámbar en las 7 pantallas,
+   un estado que nunca cambia de estado), y los dos botones de opinión del
+   médico — «De acuerdo» en azul y «En desacuerdo» en ámbar sugerían cuál
+   de las dos es la correcta, y esa opinión es un DATO, además del dato con
+   el que después se evalúa al sistema. Los dos pesan igual.
+
+   EL ÚNICO FILETE ESTRUCTURAL DE LA PÁGINA ES VERTICAL. Esta hoja tenía
+   siete reglas horizontales en la pantalla de lectura (bajo el membrete,
+   bajo la barra, tras el triage, sobre cada plegable, sobre el pie).
+   Queda UNA: la que abre el grupo de plegables. El resto agrupa por aire.
+
+   MAYÚSCULA ESPACIADA: SÓLO DENTRO DE LA PLACA. Ahí es el quemado de la
+   película — un MATERIAL. Repartida por la interfaz era una textura, y
+   había 19 rótulos así. Fuera de la placa quedan cero.
+
+   Reglas que ya sostenía este archivo y siguen valiendo:
+   · Los grises de UI son desaturados. El color sólo lo usa la semántica
+     clínica (hallazgo / salvedad) y el foco.
+   · NUNCA verde de éxito para "sin hallazgos": el recall medido (ver
+     MODEL_METADATA) deja fracturas sin detectar; un negativo no es un
+     logro. El estado sin hallazgos es NEUTRO y su
+     salvedad va al mismo peso visual.
+   · Las salvedades clínicas nunca son el texto más chico de la pantalla.
+   · Una sola escala tipográfica y una sola escala de espaciado.
+   ====================================================================== */
+
+/* ═══ 1. Fuentes (locales: la defensa puede no tener internet) ═══
+   KIBBO manda dos familias y ni una más. Montserrat donde la marca necesita
+   presencia —display, títulos, el cartel del veredicto—, nunca por debajo
+   de 18 px. Inter para cuerpo, interfaz y DATOS.
+
+   Se retiró IBM Plex Mono. No por gusto: la guía prohíbe la tercera fuente
+   («si aparece una tercera fuente, el sistema ya se descalibró») y resuelve
+   el registro técnico con FEATURES, no con otra familia — Inter con
+   numerales tabulares, cero barrado y tracking abierto. La columna de
+   scores sigue alineando, que era el único motivo real por el que había una
+   mono acá: lo que alinea es `tabular-nums`, no la mono.
+
+   `font-display: block` y no `swap`: el veredicto es Montserrat 800 a 40 px
+   con tracking negativo. Pintarlo primero en la fuente del sistema y
+   recomponerlo después hace saltar de lugar justamente a la palabra que
+   decide el triage. Bloquear ~19 KB servidos desde el mismo disco cuesta
+   milisegundos; el salto se ve.
+
+   Licencias al lado de los archivos: MONTSERRAT-OFL.txt e INTER-OFL.txt,
+   las dos SIL OFL 1.1. */
+@font-face {
+  font-family: 'Montserrat';
+  src: url('/static/fonts/montserrat-latin-600-normal.woff2') format('woff2');
+  font-weight: 600; font-style: normal; font-display: block;
+}
+@font-face {
+  font-family: 'Montserrat';
+  src: url('/static/fonts/montserrat-latin-700-normal.woff2') format('woff2');
+  font-weight: 700; font-style: normal; font-display: block;
+}
+@font-face {
+  font-family: 'Montserrat';
+  src: url('/static/fonts/montserrat-latin-800-normal.woff2') format('woff2');
+  font-weight: 800; font-style: normal; font-display: block;
+}
+@font-face {
+  font-family: 'Montserrat';
+  src: url('/static/fonts/montserrat-latin-900-normal.woff2') format('woff2');
+  font-weight: 900; font-style: normal; font-display: block;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('/static/fonts/inter-latin-400-normal.woff2') format('woff2');
+  font-weight: 400; font-style: normal; font-display: block;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('/static/fonts/inter-latin-500-normal.woff2') format('woff2');
+  font-weight: 500; font-style: normal; font-display: block;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('/static/fonts/inter-latin-600-normal.woff2') format('woff2');
+  font-weight: 600; font-style: normal; font-display: block;
+}
+
+/* ═══ 2. Tokens ═══
+   Dos capas y el orden importa:
+
+     --kb-*   EL SISTEMA DE MARCA KIBBO, copiado literal del PDF. Ningún
+              valor de esta capa se inventa ni se ajusta. Si la guía cambia,
+              se cambia acá y en ningún otro lado.
+     el resto LOS NOMBRES DE ESTA APP (--chrome, --ground, --ink, --finding…),
+              que ahora APUNTAN a la capa KIBBO. Hay ~3.900 líneas de hoja
+              madura colgando de ellos con las razones escritas al lado, y
+              esas razones siguen valiendo aunque cambie la piel. Se les
+              cambió a qué apuntan, no qué significan.
+
+   Todos los ratios de abajo están MEDIDOS con la fórmula WCAG 2.1, no
+   estimados: el cálculo reproduce exacto los números que publica el PDF de
+   KIBBO (violeta 9,21 / 8,43 · tinta 17,62 · secundario 6,21 / 5,68 ·
+   cian-tinta 5,24 / 4,79), así que los derivados de más abajo salen de la
+   misma fórmula que los oficiales. */
+:root {
+  /* ── KIBBO · color ─────────────────────────────────────────────── */
+  --kb-violet:    #461CCA;  /* protagonista. 9,21 sobre blanco · 8,43 sobre el tinte. AAA en las dos */
+  --kb-ink:       #1a1040;  /* TODA la tinta. Reemplaza al negro puro, que la guía prohíbe. 17,62 */
+  --kb-bg:        #FFFFFF;
+  --kb-bg-tint:   #F5F4FB;
+
+  /* Los tres acentos, con cuentagotas. Ninguno es texto sobre claro. */
+  --kb-cyan:      #0BA5EC;  /* 2,76 sobre blanco: extremo del gradiente, íconos sobre oscuro, decoración */
+  --kb-cyan-ink:  #1071B0;  /* el cian con 35 % de tinta — 5,24 / 4,79. Es el que SÍ es texto */
+  --kb-magenta:   #E930B0;  /* dato clave puntual. 3,81: sólo relleno con tinta encima */
+  --kb-amber:     #F7B500;  /* advertencia. 1,82: JAMÁS texto ni ícono sobre claro */
+
+  /* Rampa violeta — todos salen de mezclar el #461CCA con blanco o con la tinta */
+  --kb-violet-50:  #F4F1FC;
+  --kb-violet-100: #E9E4F9;
+  --kb-violet-200: #CFC4F1;  /* bordes y tramas sobre claro, nunca texto */
+  --kb-violet-300: #AE9BE8;  /* texto e íconos SOBRE OSCURO */
+  --kb-violet-400: #7E60DA;  /* el violeta más claro que todavía pasa sobre blanco (4,59) */
+  --kb-violet-600: #3C19AC;  /* hover del botón primario */
+  --kb-violet-700: #341790;  /* pressed */
+
+  /* Superficie oscura — derivados del violeta, NUNCA gris */
+  --kb-abyss:     #080417;  /* blanco encima 20,19 */
+  --kb-deep:      #0E0826;  /* ground oscuro canónico — 19,42 */
+  --kb-lift:      #2A1670;  /* elevación sobre oscuro — 14,51 */
+
+  /* Neutros funcionales. Ninguno es un gris neutro: todos van hacia el violeta */
+  --kb-secondary: #5C6074;  /* texto secundario — 6,21 / 5,68 */
+  --kb-control:   #7E8496;  /* borde de control — 3,73, cumple 1.4.11 */
+  --kb-hairline:  #E7E4F2;  /* separadores, decorativo */
+  --kb-disabled:  #EFEEF5;  /* fondo de control deshabilitado */
+  --kb-disabled-ink: #8F95A5;  /* texto deshabilitado — exento por 1.4.3 */
+
+  /* ── KIBBO · gradientes ────────────────────────────────────────────
+     UNO POR PANTALLA. Si dos elementos llevan el firma a la vez, no destaca
+     ninguno y el sistema se rompe. */
+  --kb-grad-firma: linear-gradient(135deg, #461CCA 0%, #0BA5EC 100%);
+  /* El seguro para texto: mismo arranque, termina en el cian-tinta. El
+     mínimo a lo largo de toda la rampa es 5,24, así que el blanco pasa
+     caiga donde caiga. Obligatorio en cualquier superficie con gradiente
+     que lleve texto de cuerpo. */
+  --kb-grad-safe:  linear-gradient(135deg, #461CCA 0%, #1071B0 100%);
+  /* El profundo es SUELO, no acento: pie, campo del visor, banda de dato. */
+  --kb-grad-deep:  linear-gradient(160deg, #2A1670 0%, #0E0826 100%);
+
+  /* ── KIBBO · sombras con pizca de violeta ──────────────────────────
+     Literal de la guía: toda la escala se construye sobre un único rgb, que
+     es el #461CCA con distintas opacidades. Una sombra gris plana sobre
+     claro ensucia el claro, y es un NO explícito. */
+  --sh-xs: 0 1px 2px   rgba(70,28,202,.06);
+  --sh-sm: 0 2px 8px   rgba(70,28,202,.08);
+  --sh-md: 0 6px 18px  rgba(70,28,202,.10);
+  --sh-lg: 0 12px 32px rgba(70,28,202,.14);
+  --sh-xl: 0 20px 48px rgba(70,28,202,.18);
+
+  /* ── Superficies de esta app ───────────────────────────────────────
+     El sistema de valor no cambió de estructura, cambió de material:
+       blanco  --chrome  = CROMO   (membrete, barra de herramientas, controles)
+       tinte   --ground  = SUELO   (la hoja donde se lee)
+       abismo  --well    = IMAGEN  (la placa; nada más en la app es tan oscuro)
+
+     La placa dejó de ser #000. La guía prohíbe el negro puro y lo reemplaza
+     por la tinta; acá baja hasta el abismo #080417, que es el valor más
+     oscuro que KIBBO publica. Cuesta 0,03 de densidad contra el negro
+     absoluto y a cambio la placa deja de ser el único objeto de la pantalla
+     fuera del sistema de marca. Blanco encima: 20,19. */
+  --chrome:      var(--kb-bg);
+  --ground:      var(--kb-bg-tint);
+  --ground-2:    var(--kb-violet-100);   /* pulsado / activo */
+  --well:        var(--kb-abyss);
+
+  /* ── Tintas: tres niveles, los tres de KIBBO ── */
+  --ink:         var(--kb-ink);          /* 17,62 blanco · 16,12 hoja */
+  --ink-2:       var(--kb-lift);         /* 14,51 · 13,28 */
+  --ink-3:       var(--kb-secondary);    /*  6,21 ·  5,68 — piso de contraste DE TEXTO, no bajar de acá */
+
+  --rule:        var(--kb-hairline);     /* filete */
+  --rule-2:      var(--kb-control);      /* filete de control (borde de botón, campo) — 3,73, cumple 1.4.11 */
+
+  /* ── Semántica clínica ─────────────────────────────────────────────
+     ACÁ ESTÁ LA ÚNICA DECISIÓN DE ESTE ARCHIVO QUE HAY QUE DEFENDER.
+
+     KIBBO prohíbe el rojo: «el error se marca con forma y texto, el éxito
+     es violeta, y la advertencia es ámbar». La app usaba carmín #AA1E28
+     para la detección SOBRE umbral y ámbar para la que queda BAJO. Se pasó
+     el eje entero a la paleta de marca: magenta para el dato clave, ámbar
+     para la advertencia — que son los dos roles que la propia guía les da.
+
+     Lo que hay que decir en voz alta: KIBBO manda que magenta y ámbar
+     «nunca juntos, punto», y en la lista de hallazgos aparecen JUNTOS por
+     construcción, porque un estudio tiene cajas de los dos lados del
+     umbral. Es una violación consciente y acotada a un solo componente. La
+     alternativa era colapsar los dos estados en un color y borrar un dato
+     medido, que es peor que romper una regla de estilo.
+
+     Ninguno de los dos colores llega solo: el hallazgo bajo umbral va
+     además PUNTEADO, y la reserva clínica lleva siempre el ícono de
+     información. El color nunca es el único portador.
+
+     Los valores de TEXTO salen de la receta que la propia guía usa para
+     fabricar el cian-tinta (mezclar el acento con la tinta), llevada hasta
+     donde el resultado pasa el piso de 6:1 sobre la hoja que esta app se
+     puso: magenta con 40 % de tinta y ámbar con 60 %. */
+  --finding:      #962383;  /* magenta + 40 % tinta — 7,33 blanco · 6,71 hoja */
+  --finding-tint: #FDEAF7;  /* magenta al 10 % — tinta encima 15,34 */
+  --finding-track:var(--kb-violet-200);
+  --caution:      #725226;  /* ámbar + 60 % tinta — 7,12 · 6,51 */
+  --caution-soft: #FEF8E6;  /* ámbar al 10 % — tinta encima 16,60 */
+  --caution-ink:  var(--kb-ink);  /* 16,60 sobre --caution-soft */
+
+  /* ── Sistema: interacción, jamás dato ──────────────────────────────
+     El azul LEEX (#30a1c2 / #219EE0) no existe más: la guía lo saca de
+     todos los roles y el link pasa a ser violeta. El acento de interacción
+     es ahora el violeta de marca, que además es el color del CTA primario.
+     Eso NO colapsa los dos trabajos: el RELLENO violeta dice QUÉ HACER y el
+     ANILLO violeta dice DÓNDE ESTÁS, y ninguno de los dos toca jamás una
+     fila de hallazgo ni un número clínico. */
+  --accent:      var(--kb-violet);       /* 9,21 · 8,43 */
+  --accent-soft: var(--kb-violet-100);
+  --accent-line: var(--kb-violet-200);
+
+  /* ── DENTRO DE LA PLACA ────────────────────────────────────────────
+     SOBRE LA PLACA LA SEMÁNTICA SE RE-ENCARNA: SE CONSERVA EL MATIZ, SE
+     INVIERTE LA LUMINANCIA. La placa es la única superficie invertida de la
+     app; el HUE porta el significado, la LUMINANCIA porta la legibilidad.
+     Sigue valiendo palabra por palabra con la paleta nueva: el magenta
+     #962383 con el que se escribe el hallazgo sobre la hoja es, sobre el
+     abismo, un trazo que no se ve — y ése es exactamente el trazo que
+     encierra una fractura.
+
+     La sobreimpresión DICOM la pinta la rampa violeta, que es la que KIBBO
+     destina a «texto e íconos sobre oscuro». El señalamiento lo hace el
+     cian, que sobre oscuro da 7,31 y es el único rol en el que la guía lo
+     deja trabajar. */
+  --ov:           var(--kb-violet-200);  /* 12,33 sobre el abismo */
+  --ov-strong:    var(--kb-violet-50);   /* 18,11 */
+  --ov-key:       var(--kb-violet-300);  /*  8,32 — los rótulos del quemado */
+  --plate-finding:#EC4FBC;  /* 6,16 — el magenta con 15 % de blanco: puro daba 5,30, y el
+                               trazo que encierra una fractura no se negocia a la baja */
+  --plate-caution:var(--kb-amber);       /* 11,12 */
+  --plate-accent: var(--kb-cyan);        /*  7,31 — señalamiento, no hallazgo */
+  --plate-ink:    var(--kb-ink);         /* texto sobre el número quemado de una caja: 5,38 sobre el magenta claro, 9,70 sobre el ámbar */
+
+  /* ── Alias del sistema viejo ──
+     Inversión de elevación: en oscuro la superficie subía de valor al
+     elevarse; acá un control que se apoya EN el cromo blanco se hunde hacia
+     el tinte, y uno que se apoya en la hoja sube al blanco. */
+  --stage:       var(--well);
+  --bg:          var(--ground);
+  --surface-1:   var(--chrome);
+  --surface-2:   var(--chrome);
+  --surface-3:   var(--ground-2);
+  --surface-4:   var(--rule);
+
+  --line:        var(--rule);
+  --line-2:      var(--rule-2);
+
+  --text:        var(--ink);
+  --text-2:      var(--ink-2);
+  --text-3:      var(--ink-3);
+
+  --accent-2:    var(--kb-violet-600);   /* 10,90 con blanco encima — el hover OSCURECE */
+  --accent-3:    var(--kb-violet-700);   /* 12,57 — pressed */
+  --accent-ink:  var(--kb-bg);           /*  9,21 sobre --accent */
+  --accent-bg:   var(--accent-soft);
+
+  --finding-bg:   var(--finding-tint);
+  --finding-line: #F8BDE6;
+  --caution-bg:   var(--caution-soft);
+  --caution-line: #FCE7AD;
+
+  /* ── OBJETOS GRÁFICOS: la vara es ≥3:1, NO ≥6:1 ───────────────────
+     Este bloque no continúa el de las tintas: se rige por otra norma y por
+     eso lleva encabezado propio. WCAG pide ≥4,5:1 para TEXTO y ≥3:1 para un
+     objeto gráfico que porta información (1.4.11); un relleno de barra es
+     lo segundo.
+
+     LA REGLA QUE LO ORDENA: estos tres tokens NUNCA pintan texto. Si alguno
+     termina en un `color:`, dejó de ser un objeto gráfico y pasa a deberle
+     4,5:1 a la hoja, que no tiene.
+
+     El ámbar puro mide 1,66 contra la hoja: NO SIRVE ni siquiera como
+     relleno informativo. La guía ya lo dice («sólo relleno con tinta
+     encima, o viñeta decorativa») — y una barra que codifica una cantidad
+     no es ninguna de las dos. Se usa el ámbar con 30 % de tinta, que es el
+     mínimo que llega a 3,06. El ámbar PURO queda para el chip con tinta
+     encima (9,70) y para la placa (11,12), que son los dos lugares donde la
+     guía sí lo autoriza. */
+  --fill-quiet:   var(--kb-control);   /* 3,41 sobre la hoja — sin estado: una cantidad, no un juicio */
+  --fill-finding: var(--kb-magenta);   /* 3,48 */
+  --fill-caution: #B58413;             /* ámbar + 30 % tinta — 3,06 */
+
+  /* ── TEXTO GRANDE: la tercera vara, y también es ≥3:1 ──────────────
+     WCAG pide 4,5:1 para texto normal y 3:1 para TEXTO GRANDE —≥24 px, o
+     ≥18,66 px en negrita—. El veredicto es un cartel de 40 px en peso 800:
+     entra en esa categoría por definición, no por conveniencia.
+
+     Existe porque el ámbar mezclado hasta pasar 6:1 deja de ser ámbar. A
+     60 % de tinta da #725226, que es un marrón oliva: legible, sí, y a la
+     vez el color con el que esta pantalla anuncia el triage. Con 35 % da
+     #AA7B16 —un oro— que mide 3,78 sobre blanco y 3,39 sobre el violeta 50,
+     de sobra para el tamaño al que se usa.
+
+     LA REGLA QUE LO ORDENA, y es dura: estos dos tokens SÓLO pintan texto
+     de ≥24 px o de ≥18,66 px en negrita. Si alguno aparece en una fila de
+     hallazgo, en un rótulo o en un párrafo, está mintiendo sobre su
+     contraste. El texto normal usa `--finding` y `--caution`, que pagan
+     6:1 contra la hoja. */
+  --finding-display: #B52894;  /* magenta + 25 % tinta — 5,68 blanco · 5,20 hoja */
+  --caution-display: #AA7B16;  /* ámbar  + 35 % tinta — 3,78 blanco · 3,46 hoja */
+
+  /* ── Tipografía ────────────────────────────────────────────────────
+     Escala Major Third, la de KIBBO. Los tamaños de MARCA (--kb-fs-*) son
+     fluidos entre 360 y 1440 px y están para las superficies de marca: el
+     ingreso, la portada, el cartel.
+
+     La escala de la APP (--fs-*) es el tramo bajo de la misma rampa, en
+     valores fijos, y esto es una desviación declarada: la rampa fluida de
+     KIBBO llega a 88 px porque está pensada para una landing. Esta pantalla
+     es una herramienta de lectura densa donde conviven una placa, una lista
+     de hallazgos y una barra de instrumentos; un h2 de 44 px la haría
+     ilegible. Se copian las familias, los pesos, los interlineados, el
+     tracking y los PELDAÑOS (12 · 13 · 14 · 16 · 18 · 22 · 28 · 36) — no el
+     techo. El cuerpo sí sube a los 16 px fijos que manda la guía. */
+  --kb-fs-display: clamp(44px, 29.33px + 4.074vw, 88px);  /* Montserrat 800 · lh .98 · ls -.03em */
+  --kb-fs-h1:      clamp(36px, 29.33px + 1.852vw, 56px);  /* Montserrat 700 · lh 1.06 · ls -.02em */
+  --kb-fs-h2:      clamp(28px, 22.67px + 1.481vw, 44px);  /* Montserrat 700 · lh 1.14 · ls -.015em */
+  --kb-fs-h3:      clamp(22px, 20.00px + 0.556vw, 28px);  /* Montserrat 600 · lh 1.25 */
+  --kb-fs-h4:      clamp(18px, 17.33px + 0.185vw, 20px);  /* Montserrat 600 · lh 1.35 */
+  --kb-fs-lead:    clamp(18px, 16.67px + 0.370vw, 22px);  /* Inter 400 · lh 1.5 */
+
+  --fs-micro: .75rem;    /* 12px — rótulo. Antes 11: la guía no baja de 12 */
+  --fs-xs:    .75rem;    /* 12px — rótulo */
+  --fs-sm:    .8125rem;  /* 13px — pie de captura, nota legal */
+  --fs-small: .875rem;   /* 14px — el «small» de la guía · lh 1,55 */
+  --fs-base:  1rem;      /* 16px — cuerpo de KIBBO, fijo, lh 1,5. Subió desde 15 */
+  --fs-md:    1.125rem;  /* 18px — h4 */
+  --fs-lg:    1.375rem;  /* 22px — h3 */
+  --fs-xl:    1.75rem;   /* 28px — h2 */
+  --fs-2xl:   2.25rem;   /* 36px — h1 */
+  --fs-3xl:   2.375rem;  /* 38px — el número clínico */
+
+  /* EL VEREDICTO ES UN CARTEL, no un título.
+     A 40 px en peso 800 con tracking negativo, PRIORITARIO domina la
+     columna y se lee de un vistazo desde lejos, que es exactamente el caso
+     de uso: un médico de guardia, o un tribunal mirando un proyector desde
+     el fondo del aula. Cae dentro del tramo h1 de KIBBO (36–56).
+
+     Va acá y no junto al componente (§34) a propósito: declarado allá abajo
+     quedaba DESPUÉS de las media queries de la sección 31 y, con la misma
+     especificidad, ninguna de ellas podía bajarlo. */
+  --fs-verdict: 2.5rem;  /* 40px */
+
+  /* Escala de espaciado (base 4) */
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px; --s-4: 16px;
+  --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-10: 40px;
+  --s-12: 48px; --s-16: 64px;
+
+  /* Radios. «Border-radius generoso siempre», y los botones son pill.
+     Venían de 3/4/6 con el argumento de que «un instrumento tiene cantos»;
+     ese argumento es exactamente el NO más fuerte de la guía —el look de
+     software médico genérico: gris neutro, ángulos rectos, sombra negra—
+     así que se retira. Los ceros que quedan en la hoja son COSTURAS: el
+     canto por donde una superficie se pega contra otra (el visor contra la
+     tira de miniaturas), no una esquina expuesta. */
+  --r-sm:   10px;
+  --r-md:   14px;
+  --r-lg:   20px;     /* card base de KIBBO */
+  --r-xl:   28px;     /* card destacada */
+  --r-capture: 40px;  /* contenedor de captura */
+  --r-pill: 999px;
+
+  /* Otros */
+  --nav-h:  56px;
+  --ease:   cubic-bezier(.16,1,.3,1);
+  /* Segunda curva, y la última. `--ease` es un ease-out muy marcado: sirve
+     para lo que ENTRA o SALE, porque arranca al instante y se asienta. Lo
+     que se DESPLAZA por la pantalla y sigue estando antes y después —la
+     placa viajando hasta un hallazgo— necesita acelerar y frenar, o el
+     traslado se lee como otro teletransporte con una cola. */
+  --ease-move: cubic-bezier(.65,0,.35,1);   /* easeInOutCubic */
+  /* La sombra tiene la temperatura del fondo y la marca. */
+  --shadow: var(--sh-xs), var(--sh-lg);
+  --tap:    44px;  /* objetivo táctil mínimo */
+
+  --display: 'Montserrat', 'Segoe UI', system-ui, sans-serif;
+  --sans:    'Inter', 'Segoe UI', system-ui, sans-serif;
+  /* El registro técnico NO es una familia: es Inter con features. El nombre
+     `--mono` se conserva porque lo usan 37 reglas y significa lo mismo que
+     siempre —«acá va un dato, no prosa»—, pero ya no trae otra fuente. */
+  --mono:    'Inter', 'Segoe UI', system-ui, sans-serif;
+}
+
+/* Las dos propiedades de la cortina se REGISTRAN. Un `--x: 50%` cualquiera
+   es texto para el motor de estilos y no se puede interpolar: la cortina
+   sólo podía aparecer de golpe en el medio de la placa. Declarado el tipo,
+   `--clip` y `--corte` transicionan como cualquier longitud, y la cortina
+   puede entrar barriendo desde el canto — que es como se usa.
+
+   La cortina se llama `--corte`, como en el JS. */
+@property --clip  { syntax: '<percentage>'; inherits: true; initial-value: 50%; }
+@property --corte { syntax: '<percentage>'; inherits: true; initial-value: 50%; }
+
+/* ═══ 3. Reset y base ═══ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* El atributo `hidden` tiene que ganarle a cualquier `display` explícito:
+   una clase como .stack (display:flex) lo anula sin esto, y los paneles
+   ocultos se siguen viendo. */
+[hidden] { display: none !important; }
+
+/* `color-scheme` no es decorativo: define de qué color pinta el navegador
+   las barras de desplazamiento, los controles nativos y el fondo antes de
+   que llegue la hoja. Declarado `dark` sobre una app clara, el primer
+   cuadro de cada carga era un destello negro. */
+html { -webkit-text-size-adjust: 100%; color-scheme: light; }
+
+body {
+  font-family: var(--sans);
+  background: var(--ground);
+  color: var(--text);
+  font-size: var(--fs-base);
+  line-height: 1.6;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;   /* red de contención: ningún desborde llega al usuario */
+}
+
+img, svg, canvas { max-width: 100%; }
+svg { flex-shrink: 0; }
+
+/* ═══ 4. Tipografía ═══ */
+/* La jerarquía es Montserrat y el cuerpo es Inter. Los pesos, los
+   interlineados y el tracking son los de KIBBO, peldaño por peldaño; sólo
+   el tamaño baja un escalón por lo dicho en los tokens. Ningún título entra
+   por debajo de 18 px, que es el piso que la guía le pone a Montserrat. */
+h1, h2, h3, h4, h5, h6 { font-family: var(--display); }
+h1 { font-size: var(--fs-2xl); font-weight: 700; letter-spacing: -.02em;  line-height: 1.06; }
+h2 { font-size: var(--fs-xl);  font-weight: 700; letter-spacing: -.015em; line-height: 1.14; }
+h3 { font-size: var(--fs-lg);  font-weight: 600; line-height: 1.25; }
+h4 { font-size: var(--fs-md);  font-weight: 600; line-height: 1.35; }
+/* lh 1,5 y medida 68ch, los dos literales de la guía: «interlineado 1,5 en
+   cuerpo, y no se baja: si no entra, se recorta el texto». */
+p  { font-size: var(--fs-base); color: var(--text-2); line-height: 1.5; max-width: 68ch; }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-2); text-decoration: underline; text-underline-offset: 2px; }
+
+strong, b { font-weight: 600; color: var(--text); }
+
+/* El registro técnico tiene un trabajo y sólo uno: TODOS los números (con
+   cifras de ancho fijo, para que las columnas de score aliñen), la
+   sobreimpresión de la placa, y los identificadores de máquina tipo
+   `yolov8m_v1`. Nunca prosa: una frase en registro técnico es una textura,
+   no un dato.
+
+   Ya no lo hace una mono: lo hace Inter con numerales tabulares y cero
+   barrado, que es como KIBBO resuelve el dato sin gastar la tercera fuente
+   que su propia guía prohíbe. Lo que alineaba la columna era `tabular-nums`
+   —una propiedad—, no la familia. */
+code, .mono, .num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+}
+code {
+  font-size: .875em;
+  background: var(--ground-2);
+  color: var(--ink);
+  padding: 1px 5px;
+  border-radius: var(--r-sm);
+}
+
+/* Etiqueta de sección.
+   Era versalitas espaciadas (12 px, 600, .09em, MAYÚSCULA). Había 19
+   rótulos así repartidos por la app y en conjunto no jerarquizaban nada:
+   hacían ruido de fondo. La mayúscula espaciada quedó reservada al
+   quemado de la película, DENTRO de la placa, donde es un material.
+   Acá el rótulo es lo que dice ser: chico, en caja baja, y callado. */
+.eyebrow {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+/* ═══ 5. Foco visible — global, en toda la app ═══ */
+:focus { outline: none; }
+/* El anillo de foco es de DOS CAPAS, blanco adentro y marca afuera, y eso
+   es literal de la guía: «ningún color de la marca contrasta contra blanco
+   y contra el violeta al mismo tiempo». La capa blanca es la que hace que
+   el anillo se vea también cuando el foco cae sobre un relleno violeta —un
+   botón primario, un chip— donde un anillo violeta sobre violeta no existe. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--kb-bg);
+  border-radius: var(--r-sm);
+}
+/* Sobre la placa se invierte: ahí el que desaparece es el blanco. */
+.stage :focus-visible,
+.viewport:focus-visible { box-shadow: 0 0 0 2px var(--kb-abyss); }
+.stage-img:focus-visible,
+.viewport:focus-visible { outline-offset: -3px; }
+
+/* ═══ 5b. Enlace de salto (WCAG 2.4.1) ═══
+   Primer hijo del body en base.html. En reposo vive fuera de la pantalla
+   —no `display:none`, que lo sacaría del orden de tabulación— y aterriza
+   en su lugar sólo con foco de TECLADO (`:focus-visible`): con el ratón no
+   se puede alcanzar, así que nunca aparece de la nada. Es un CTA primario
+   de KIBBO: pill violeta con texto blanco (9,21:1), y el anillo de foco es
+   el de dos capas de arriba, invertido porque el fondo ya es violeta. Va por
+   encima de la barra, que tiene `z-index: 100`, para no quedar debajo. */
+.skip-link {
+  position: absolute;
+  top: var(--s-2);
+  left: var(--s-2);
+  z-index: 200;
+  transform: translateY(-200%);
+  padding: var(--s-2) var(--s-4);
+  background: var(--kb-violet);
+  color: var(--kb-bg);
+  font-family: var(--sans);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: var(--r-pill);
+  box-shadow: var(--shadow);
+}
+.skip-link:focus-visible {
+  transform: none;
+  outline: 2px solid var(--kb-violet);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--kb-bg);
+  border-radius: var(--r-pill);
+}
+/* El destino recibe el foco por `tabindex="-1"`; el anillo ahí no dice
+   nada útil y dibujaría un rectángulo alrededor de la pantalla entera. */
+#contenido:focus-visible { outline: none; box-shadow: none; }
+
+::selection { background: var(--accent); color: var(--accent-ink); }
+
+/* ═══ 6. Layout ═══ */
+/* width:100% es obligatorio: body es flex column y `margin:0 auto` cancela
+   el stretch, así que sin esto el contenedor se dimensiona al contenido
+   (el dashboard colapsaba a 428px dentro de 1440). */
+.container {
+  width: 100%;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: var(--s-8) var(--s-6);
+  flex: 1;
+  min-width: 0;
+}
+.container-narrow {
+  width: 100%;
+  max-width: 780px;
+  margin: 0 auto;
+  padding: var(--s-8) var(--s-6);
+  flex: 1;
+  min-width: 0;
+}
+/* El visor ocupa todo: sin caja, sin márgenes. */
+/* Altura fija para toda la zona de lectura. Los encabezados (barra del
+   estudio, avisos) no se encogen y el visor se queda con el resto, sea cual
+   sea su alto. Sin una altura definida acá, "ajustar a la ventana" ajusta
+   contra una caja que crece con el contenido del panel lateral. */
+.main-stage {
+  width: 100%;
+  flex: none;
+  min-width: 0;
+  height: calc(100dvh - var(--nav-h));
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* El visor mide una pantalla, PIE INCLUIDO.
+   `height: calc(100dvh - var(--nav-h))` no descuenta el pie, así que la
+   página de lectura siempre medía una pantalla más el alto del pie: la
+   ventana traía barra de desplazamiento vertical y a la placa se le
+   cortaba el canto de abajo justo en el pliegue.
+
+   Con `:has()` la altura la reparte el flex del body —que ya es una
+   columna— en vez de calcularse a mano contra un pie cuyo alto el CSS no
+   puede leer. Donde `:has()` no está soportado, se degrada exactamente al
+   comportamiento de antes: nada se rompe, la página vuelve a desplazarse. */
+body:has(> .main-stage) { height: 100dvh; overflow: hidden; }
+body:has(> .main-stage) .main-stage { flex: 1 1 auto; height: auto; min-height: 0; }
+.main-stage > .study-bar,
+.main-stage > .study-alerts { flex-shrink: 0; }
+
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--s-6);
+  padding-bottom: var(--s-4);
+}
+.page-header h1 { display: flex; align-items: center; gap: var(--s-3); }
+.page-header-sub { font-size: var(--fs-sm); color: var(--ink-3); margin-top: 2px; }
+.page-id {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+  color: var(--text-3);
+  font-weight: 400;
+  font-size: .8em;
+}
+
+/* ═══ 7. Membrete ═══
+   Era una barra oscura con el logo metido en una cajita de acento azul.
+   Esa cajita rompía la regla de color de la app entera —azul relleno en un
+   elemento que no se puede tocar— y encima competía con la marca.
+
+   Ahora es un membrete: cromo blanco de 56 px, la marca como palabra, y la
+   procedencia académica separada por un FILETE VERTICAL. Ese filete es el
+   único de la barra: no hay línea horizontal abajo, el salto de blanco a
+   gris ya dibuja el canto. */
+.navbar {
+  min-height: var(--nav-h);
+  background: var(--chrome);
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  padding: 0 var(--s-10);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  flex-shrink: 0;
+}
+.nav-brand a {
+  color: var(--ink);
+  font-size: 1.1875rem;          /* 19px */
+  font-weight: 800;
+  letter-spacing: -.035em;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.nav-brand a:hover { text-decoration: none; color: var(--ink); }
+/* La procedencia del trabajo. Es una tesis que se defiende ante tribunal:
+   de quién es y de dónde sale forma parte del membrete. */
+.nav-sub {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--ink-3);
+  margin-left: var(--s-4);
+  padding-left: var(--s-4);
+  border-left: 1px solid var(--rule);
+  white-space: nowrap;
+}
+
+/* `min-width: 0` deja que el bloque se ACHIQUE, pero por sí solo no impide
+   que sus hijos se SALGAN: los enlaces llevan `white-space: nowrap`, así
+   que al angostarse el contenedor desbordaban visiblemente y se apoyaban
+   encima de `.nav-user`. Medido a 1024x768 —la resolución del proyector—
+   «Alcance» terminaba en x=831 y el usuario empezaba en x=802: 29 px de
+   superposición, y en pantalla se leía «AlcanOce Administrador». Era lo
+   primero que veía el tribunal.
+
+   `overflow-x: auto` cierra el desborde por definición y para todo ancho:
+   lo que no entra se desplaza dentro de la barra en vez de invadir al
+   vecino. Es la misma solución que ya usaba la barra en el teléfono; lo
+   que faltaba era que valiera también arriba de 860. La barra de
+   desplazamiento se oculta —es una fila de cinco enlaces, no una lista. */
+.nav-links {
+  display: flex; align-items: center;
+  gap: var(--s-6);
+  min-width: 0;
+  margin-left: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.nav-links::-webkit-scrollbar { display: none; }
+.nav-links a { flex-shrink: 0; }
+.nav-links a {
+  color: var(--ink-2);
+  padding: 2px 0;
+  display: inline-flex;
+  align-items: center;
+  border-bottom: 2px solid transparent;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  transition: color .16s var(--ease), border-color .16s var(--ease);
+}
+.nav-links a:hover { color: var(--ink); border-bottom-color: var(--rule-2); text-decoration: none; }
+/* DÓNDE ESTÁS, en azul de sistema. Es el uso canónico del acento: marca
+   posición, no dato. Un subrayado de 2 px y no un relleno — el relleno
+   convertiría la pestaña en un botón que no lleva a ningún lado. */
+.nav-links a.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.nav-user { display: flex; align-items: center; gap: var(--s-3); margin-left: var(--s-8); min-width: 0; }
+.nav-user-name {
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  max-width: 200px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.nav-user-tag {
+  font-size: var(--fs-micro);
+  background: var(--ground-2);
+  color: var(--ink-2);
+  padding: 1px 7px;
+  border-radius: var(--r-sm);
+  font-weight: 500;
+}
+.nav-logout-form { margin: 0; display: flex; }
+
+/* ═══ 8. Botones ═══ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  /* 38 px con el mouse, 44 con el dedo (ver el bloque de puntero grueso al
+     final de esta sección). El objetivo táctil de 44 px es un requisito de
+     accesibilidad EN PANTALLAS TÁCTILES; aplicado también al escritorio,
+     lo único que hacía era engordar el cromo alrededor de la placa. */
+  min-height: 44px;
+  padding: 0 var(--s-5);
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  font-family: var(--sans);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  transition: background .16s var(--ease), border-color .16s var(--ease),
+              color .16s var(--ease), transform .12s var(--ease);
+}
+.btn:hover { text-decoration: none; }
+/* Feedback de presión: el control acusa recibo antes de que el servidor
+   conteste. `scale` arrastra también el contenido, así que se lee como un
+   botón que se hunde y no como un botón que se mueve. A 0,985 el
+   desplazamiento era de medio píxel — por debajo del umbral de percepción,
+   o sea ninguna respuesta. 0,97 se siente sin llegar a verse. */
+.btn:active { transform: scale(.97); }
+.btn svg { width: 16px; height: 16px; }
+
+/* Las tres jerarquías de KIBBO, con sus estados reales: primario relleno
+   violeta con texto blanco (9,21), secundario contorno violeta, fantasma
+   para la acción terciaria. El hover cambia COLOR y SOMBRA, nunca posición
+   —un CTA que se corre bajo el cursor es un error de usabilidad—, y el
+   pressed baja al 700 de la rampa. */
+.btn-primary { background: var(--accent); color: var(--accent-ink); box-shadow: var(--sh-sm); }
+.btn-primary:hover  { background: var(--accent-2); color: var(--accent-ink); box-shadow: var(--sh-md); }
+.btn-primary:active { background: var(--accent-3); }
+
+.btn-secondary {
+  background: var(--chrome);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.btn-secondary:hover  { background: var(--kb-violet-50); color: var(--accent-2); border-color: var(--accent-2); }
+.btn-secondary:active { background: var(--kb-violet-100); color: var(--accent-3); border-color: var(--accent-3); }
+
+/* Sobre el gradiente profundo el violeta mide 2,19 y directamente no se
+   lee: es el mismo motivo por el que la guía manda el wordmark blanco sobre
+   oscuro. Acá el contorno y la letra van en blanco, y el relleno del hover
+   es blanco al 12 %, que es lo único que no depende de la rampa. */
+.btn-on-dark {
+  background: transparent;
+  color: var(--kb-bg);
+  border-color: rgba(255,255,255,.38);
+}
+.btn-on-dark:hover  { background: rgba(255,255,255,.12); color: var(--kb-bg); border-color: rgba(255,255,255,.62); }
+.btn-on-dark:active { background: rgba(255,255,255,.20); }
+/* El anillo de foco se invierte: adentro va el fondo oscuro, afuera el
+   blanco. Es la misma regla de dos capas, con los papeles cambiados. */
+.btn-on-dark:focus-visible { outline-color: var(--kb-bg); box-shadow: 0 0 0 2px var(--kb-deep); }
+
+.btn-ghost { background: transparent; color: var(--accent); border-color: transparent; }
+.btn-ghost:hover  { background: var(--kb-violet-50); color: var(--accent-2); }
+.btn-ghost:active { background: var(--kb-violet-100); color: var(--accent-3); }
+
+/* Acuerdo / desacuerdo del médico. Deliberadamente NO verde/rojo clínico:
+   son opiniones sobre el sistema, no estados del paciente.
+
+   Y AHORA TAMPOCO azul contra ámbar. «De acuerdo» venía en el azul del
+   sistema y «En desacuerdo» en ámbar, y eso es una recomendación: el azul
+   es el color con el que esta interfaz dice «acá», y una opinión clínica no
+   es una interacción — es un DATO, el único de esta pantalla que aporta el
+   médico. Un sistema de soporte a la decisión no puede insinuar cuál de las
+   dos respuestas es la correcta, y menos cuando lo que recoge es la
+   evidencia con la que después se lo evalúa.
+
+   Los dos pesan EXACTAMENTE lo mismo. La diferencia entre ellos es la
+   palabra, que es donde tiene que estar. */
+.btn-agree,
+.btn-disagree { background: var(--chrome); color: var(--ink-2); border-color: var(--rule-2); }
+.btn-agree:hover,
+.btn-disagree:hover { background: var(--ground-2); color: var(--ink); border-color: var(--ink-3); }
+
+.btn-sm { min-height: 36px; padding: 0 var(--s-4); font-size: var(--fs-sm); }
+/* 48 px es el alto que la guía le pone al CTA. Es el único botón de la app
+   que lo lleva; el resto vive dentro de una barra de instrumentos densa y a
+   48 px el cromo se comería la placa. */
+.btn-lg { min-height: 48px; padding: 0 var(--s-6); font-size: var(--fs-base); }
+
+/* Deshabilitado con los tokens de la guía y no con opacidad: un violeta al
+   45 % sobre la hoja es un violeta más claro, o sea un violeta que todavía
+   parece que se puede apretar. El fondo de control deshabilitado dice otra
+   cosa, y su tinta está exenta de 1.4.3 a propósito. */
+.btn[disabled], .btn:disabled {
+  background: var(--kb-disabled);
+  color: var(--kb-disabled-ink);
+  border-color: transparent;
+  box-shadow: none;
+  opacity: 1;
+  cursor: not-allowed;
+}
+.btn[disabled]:active { transform: none; }
+
+/* Pantalla táctil: todo lo que se toca vuelve a 44 px. */
+@media (pointer: coarse) {
+  .btn    { min-height: var(--tap); padding: 0 var(--s-5); }
+  .btn-sm { min-height: 40px; padding: 0 var(--s-4); }
+}
+
+.actions-bar { display: flex; gap: var(--s-3); flex-wrap: wrap; margin-top: var(--s-6); }
+
+/* ═══ 9. Paneles ═══ */
+/* La card de KIBBO, literal: fondo blanco, borde hairline, radio 20 y
+   sombra media con tinte violeta. Lo que NO se copia es el hover que sube
+   4 px: la guía se lo pone a una card de marketing que es un enlace entero.
+   Acá una `.card` es un panel de lectura y no lleva a ningún lado; moverla
+   bajo el cursor prometería un clic que no existe. El hover está más abajo,
+   sobre las que sí son enlaces. */
+.card {
+  background: var(--chrome);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-md);
+  padding: var(--s-5) var(--s-6);
+  min-width: 0;
+}
+a.card, .card-link {
+  display: block;
+  transition: transform .16s var(--ease), box-shadow .16s var(--ease), border-color .16s var(--ease);
+}
+a.card:hover, .card-link:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--sh-lg);
+  border-color: var(--accent-line);
+  text-decoration: none;
+}
+.card + .card { margin-top: var(--s-4); }
+
+/* Sin filete: el título de una tarjeta ya está encerrado por la tarjeta.
+   Subrayarlo además era decir dos veces lo mismo.
+
+   Las VERSALITAS ESPACIADAS vuelven, y esto revierte a conciencia una regla
+   que esta hoja sostenía («mayúscula espaciada: sólo dentro de la placa»).
+   El rótulo de KIBBO es Inter 500 a 12 px con 0,12em de tracking, en caja
+   alta, y es un elemento del sistema —el mismo que rotula un campo o un
+   chip—, no una textura suelta. Lo que hacía ruido antes eran 19 rótulos
+   así repartidos sin jerarquía; ahora es UN registro con un trabajo
+   definido: nombrar un contenedor. Dentro de la placa sigue siendo otra
+   cosa (el quemado de la película) y no comparten regla. */
+.card-title {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: var(--s-3);
+}
+
+/* ═══ 10. Chips ═══ */
+/* Alto 24, radio pill, registro técnico a 12 px. Los cinco de la guía
+   están mapeados abajo: neutro, marca, sólido, advertencia y acento. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: var(--r-pill);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums slashed-zero;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.badge svg { width: 12px; height: 12px; }
+.badge-finding { background: var(--finding-tint); color: var(--finding); border-color: var(--finding-line); }
+.badge-caution { background: var(--caution-soft); color: var(--caution-ink); border-color: var(--caution-line); }
+.badge-accent  { background: var(--accent-soft);  color: var(--accent); border-color: var(--accent-line); }
+/* "Sin hallazgos" es neutro. Nunca verde de éxito. */
+.badge-neutral { background: var(--ground-2); color: var(--ink-2); border-color: var(--rule-2); }
+.badge-quiet   { background: transparent; color: var(--ink-3); border-color: var(--rule-2); }
+
+/* ═══ 11. Avisos ═══ */
+.alert {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  border: 0;
+  border-left: 3px solid var(--rule-2);
+  background: var(--chrome);
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  margin-bottom: var(--s-4);
+}
+.alert svg { width: 17px; height: 17px; margin-top: 1px; }
+/* El aviso se marca con un filete VERTICAL a la izquierda, no con una caja
+   con borde: la caja agregaba cuatro cantos a una hoja cuyo único filete
+   estructural es vertical. */
+.alert-caution {
+  background: var(--caution-soft);
+  border-left-color: var(--caution);
+  color: var(--caution-ink);
+}
+.alert-caution svg { color: var(--caution); }
+.alert-finding {
+  background: var(--finding-tint);
+  border-left-color: var(--finding);
+  color: var(--ink);
+}
+.alert-finding svg { color: var(--finding); }
+.alert-error { background: var(--finding-tint); border-left-color: var(--finding); color: var(--ink); }
+.alert-error svg { color: var(--finding); }
+.alert-info { background: var(--accent-soft); border-left-color: var(--accent); color: var(--ink); }
+.alert-info svg { color: var(--accent); }
+
+/* ═══ 12-14. LO QUE ESTUVO ACÁ — retirado, no comentado ═════════════
+   Vivían acá tres componentes de la maqueta anterior: el bloque `.verdict`
+   (veredicto con ícono y párrafo), `.prob` (el número clínico solo y
+   grande) y `.finding-row` (la lista de hallazgos con barra). Los tres los
+   reemplazaron `.triage`, `.gauge` y `.find` cuando la lectura pasó a ser
+   una pantalla de triage y no un informe.
+
+   Ninguna plantilla los renderizaba: ~200 líneas que el navegador bajaba y
+   descartaba. Se borran ANTES de estilar el resto de las pantallas y no
+   después, porque inertes no molestan pero SÍ engañan: el que abriera esta
+   hoja buscando cómo se pinta una probabilidad encontraba `.prob` primero
+   y lo tomaba por el componente vigente.
+
+   Sobrevive una sola clase, y por uso medido: `.prob-unit`, el símbolo de
+   porcentaje que `prob_big` mete dentro del número grande. La usa la
+   figura de acuerdo del panel de administración. */
+.prob-unit {
+  font-size: .42em;
+  margin-left: .12em;
+  color: var(--text-2);
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+/* ═══ 15. Panel técnico plegable ═══ */
+.tech { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-1); }
+.tech > summary {
+  cursor: pointer;
+  padding: var(--s-3) var(--s-4);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  list-style: none;
+  min-height: var(--tap);
+  border-radius: var(--r-md);
+}
+.tech > summary::-webkit-details-marker { display: none; }
+.tech > summary:hover { color: var(--text); background: var(--surface-2); }
+.tech > summary .chev { width: 14px; height: 14px; transition: transform .18s var(--ease); }
+.tech[open] > summary .chev { transform: rotate(90deg); }
+.tech[open] > summary { border-bottom: 1px solid var(--line); border-radius: var(--r-md) var(--r-md) 0 0; }
+.tech-body { padding: var(--s-4); }
+
+.kv { display: grid; grid-template-columns: auto 1fr; gap: var(--s-2) var(--s-4); font-size: var(--fs-sm); }
+.kv dt { color: var(--text-3); white-space: nowrap; }
+.kv dd { color: var(--text); font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1; text-align: right; word-break: break-word; }
+
+/* ═══ 16. VISOR ═════════════════════════════════════════════════════════
+   LA PLACA DEJÓ DE SER EL FONDO Y PASÓ A SER UN OBJETO.
+
+   Antes toda la columna izquierda era negra: la placa no tenía canto, se
+   fundía con su propio contenedor y el ojo no sabía dónde terminaba la
+   radiografía y dónde empezaba la aplicación. Ahora el negro está
+   acotado a la ventana de imagen —el negatoscopio— y esa ventana se apoya
+   sobre la hoja gris con aire alrededor.
+
+   El único filete estructural de la pantalla es el VERTICAL que separa el
+   negatoscopio del informe. Va como elemento propio (`.split`) y no como
+   borde de una de las dos columnas, porque no pertenece a ninguna: separa.
+   ═══════════════════════════════════════════════════════════════════════ */
+.reader {
+  display: grid;
+  /* 1px de filete, con su aire a cada lado dado por el padding de las
+     columnas. La columna del informe es fija: un informe clínico se lee
+     en una medida de línea estable, no en una que crece con el monitor. */
+  grid-template-columns: minmax(0, 1fr) 1px 430px;
+  background: var(--ground);
+  padding: var(--s-5) var(--s-8);
+  /* Toma la altura que sobra dentro de .main-stage, que ya está acotada. */
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;   /* cada panel maneja su propio scroll */
+}
+
+/* El filete. `margin` vertical: no llega a tocar ni el techo ni el piso,
+   así se lee como una separación y no como el borde de una caja. */
+.split { background: var(--rule); margin: 2px 0; }
+
+.stage {
+  position: relative;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 420px;
+  padding-right: var(--s-8);
+}
+
+/* La barra de herramientas es CROMO: blanco, apoyada sobre el negatoscopio
+   y redondeada sólo arriba, porque las dos piezas son un solo objeto. Sin
+   filete abajo — el salto de blanco a negro ya es el canto más marcado que
+   puede haber en la pantalla. */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 0 var(--s-2);
+  min-height: 40px;
+  background: var(--chrome);
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.tool {
+  width: 34px; height: 30px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: background .16s var(--ease), color .16s var(--ease),
+              transform .1s var(--ease);
+}
+.tool:active { transform: scale(.93); }
+.tool svg { width: 17px; height: 17px; }
+.tool:hover { background: var(--ground-2); color: var(--ink); }
+/* Herramienta encendida = DÓNDE ESTÁS. Azul de sistema, el mismo de la
+   pestaña activa y del foco. Nunca rojo ni ámbar: esos dos hablan del
+   paciente, no del instrumento. */
+.tool[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.tool-sep { width: 1px; height: 16px; background: var(--rule); margin: 0 var(--s-2); flex-shrink: 0; }
+/* Ayuda de manejo. Va en Montserrat y no en mono: es una frase para leer,
+   no un identificador de máquina. */
+.tool-label {
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  margin-left: auto;
+  padding-right: var(--s-2);
+}
+
+/* Pantalla táctil: la herramienta vuelve al objetivo de 44 px. */
+@media (pointer: coarse) {
+  .toolbar { padding: var(--s-1) var(--s-2); }
+  .tool { width: var(--tap); height: var(--tap); }
+}
+
+/* EL NEGATOSCOPIO. Único negro puro de la aplicación. */
+.viewport {
+  position: relative;
+  flex: 1;
+  background: var(--well);
+  border-radius: 0 0 var(--r-sm) var(--r-sm);
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* Con tira de imágenes debajo, el canto de abajo lo redondea la tira. */
+.stage:has(> .filmstrip) > .viewport { border-radius: 0; }
+.viewport.is-panning { cursor: grabbing; }
+/* La imagen se posiciona en absoluto: si quedara en el flujo, su tamaño
+   natural estiraría la ventana y "ajustar" no tendría contra qué ajustar
+   (el transform no afecta al layout, el tamaño intrínseco sí). */
+.stage-img {
+  position: absolute;
+  top: 0; left: 0;
+  display: block;
+  max-width: none;
+  transform-origin: 0 0;
+  image-rendering: -webkit-optimize-contrast;
+  user-select: none;
+  -webkit-user-drag: none;
+  will-change: transform;
+}
+.stage.is-inverted .stage-img { filter: invert(1); }
+
+/* El pie de figura. Registro de tesis: la placa que se proyecta ante un
+   tribunal se cita. Sólo dice lo que el sistema efectivamente sabe —no se
+   nombra una proyección que nadie registró. */
+.stage-caption {
+  padding: var(--s-3) 2px 0;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  line-height: 1.45;
+  flex-shrink: 0;
+}
+.stage-caption strong { color: var(--ink-2); font-weight: 600; }
+
+/* ── Sobreimpresión DICOM ──────────────────────────────────────────────
+   ES EL ÚNICO LUGAR DE LA APP CON MAYÚSCULA ESPACIADA. Sacarla del informe
+   y dejarla sólo acá la convierte en un MATERIAL —el quemado de la
+   película— en vez de una textura repartida por la pantalla.
+
+   Va íntegra en las cuatro esquinas, NUNCA SOBRE LA ANATOMÍA. Y esa
+   segunda mitad manda sobre la primera: cuando la placa se lleva el ancho
+   entero y no quedan esquinas negras —debajo de 860—, el quemado no se
+   achica ni se sombrea, se va de la película (ver `.plate-meta`). */
+.overlay {
+  position: absolute;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+  font-size: 10px;
+  letter-spacing: .04em;
+  line-height: 1.7;
+  color: var(--ov);
+  /* Se conserva por seguridad: si el médico desplaza la placa, debajo de
+     una esquina puede quedar hueso quemado y el gris claro se pierde. */
+  text-shadow: 0 1px 3px rgba(0,0,0,.9);
+  pointer-events: none;
+  z-index: 2;
+  max-width: 46%;
+}
+.overlay-tl { top: var(--s-4); left: var(--s-4); }
+.overlay-tr { top: var(--s-4); right: var(--s-4); text-align: right; }
+.overlay-bl { bottom: var(--s-4); left: var(--s-4); }
+.overlay-br { bottom: var(--s-4); right: var(--s-4); text-align: right; }
+.overlay strong { color: var(--ov-strong); font-weight: 500; font-size: 12px; letter-spacing: .09em; }
+/* El rótulo va en su propio renglón, arriba del valor: así se lee la
+   columna de valores de corrido, como en un quemado real. */
+.overlay .ov-key {
+  display: block;
+  font-size: 9px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ov-key);
+  margin-top: 6px;
+}
+.overlay > div:first-child .ov-key,
+.overlay > .ov-key:first-child { margin-top: 0; }
+
+/* ── El quemado cuando NO hay película ────────────────────────────────
+   Debajo de 860 la placa se lleva el ancho entero de la pantalla y no
+   quedan esquinas negras: el sobreimpreso deja de apoyarse en el fondo del
+   negatoscopio y se apoya en la anatomía. Medido a 375 con el estudio 601:
+   `MODELO yolov8m_v1 / INFERENCIA 4567 ms` en #C9CCD0 sobre metacarpianos
+   blancos da 1,2:1 —no se lee— y ocupa 8 % de la imagen. Las dos cosas
+   están mal a la vez: tapa hueso Y no informa.
+
+   Acá el quemado no se maquilla, se MUDA. Baja de la placa a la hoja y
+   deja de ser un quemado: sin mayúscula espaciada, sin gris de película,
+   en la tipografía de la interfaz. Eso es lo que corresponde — «el único
+   lugar de la app con mayúscula espaciada» es la placa, y esto ya no está
+   sobre la placa.
+
+   Sobreviven en las esquinas ZOOM y MARCAS, que no son quemado: son el
+   estado vivo del instrumento, cambian cuando el médico toca algo y ahí
+   sí tienen que estar donde está la mano. Miden 20 px, van al canto del
+   negatoscopio y llevan su propia placa oscura (ver 560). */
+.plate-meta {
+  display: none;               /* la enciende el breakpoint angosto */
+  flex-wrap: wrap;
+  gap: 2px var(--s-4);
+  margin: 0;
+  padding: var(--s-2) 2px 0;
+  font-size: var(--fs-micro);
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.plate-meta .ov-key {
+  color: var(--ink-3);
+  letter-spacing: .005em;
+  text-transform: none;
+  margin-top: 0;
+  display: inline;
+}
+.plate-meta strong { color: var(--ink); font-weight: 600; }
+
+/* Panel de lectura */
+/* El panel dejó de ser una columna de fragmentos sueltos sobre la hoja y
+   pasó a ser una PILA DE TARJETAS, que es el idioma de KIBBO: blanco sobre
+   el tinte, hairline, radio generoso y sombra con pizca de violeta. Lo que
+   antes agrupaba el aire ahora lo agrupa el canto de la tarjeta, y el aire
+   queda para separar los grupos entre sí.
+
+   Se gana el borde derecho: sin él las tarjetas morían contra el canto del
+   panel. Es angosto a propósito, porque ahí también corre la barra de
+   desplazamiento. */
+.readout {
+  background: transparent;
+  padding-left: var(--s-8);
+  padding-right: var(--s-3);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Tira de imágenes del estudio */
+.filmstrip {
+  display: flex;
+  gap: var(--s-2);
+  padding: var(--s-2);
+  background: var(--chrome);
+  border-radius: 0 0 var(--r-sm) var(--r-sm);
+  overflow-x: auto;
+  flex-shrink: 0;
+  scrollbar-width: thin;
+}
+.frame {
+  position: relative;
+  flex: 0 0 auto;
+  width: 66px;
+  padding: 0;
+  background: var(--well);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color .16s var(--ease), box-shadow .16s var(--ease);
+}
+.frame img { display: block; width: 100%; height: 66px; object-fit: cover; opacity: .82; }
+.frame:hover { border-color: var(--ink-3); }
+.frame:hover img { opacity: 1; }
+/* La imagen abierta = dónde estás. Azul de sistema, y con anillo para que
+   no dependa sólo del color. */
+.frame[aria-current="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.frame[aria-current="true"] img { opacity: 1; }
+/* El número va quemado sobre la miniatura, que es negra: sigue las reglas
+   de la placa, no las de la hoja. */
+.frame-tag {
+  position: absolute; left: 0; bottom: 0;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+  font-size: 10px;
+  padding: 1px 4px;
+  background: rgba(0,0,0,.72);
+  color: var(--ov);
+}
+.frame.has-finding .frame-tag { color: var(--plate-finding); }
+.frame.has-finding { border-color: var(--finding); }
+
+/* ═══ 16.b Encabezado del estudio multi-imagen ═══ */
+.study-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-5);
+  flex-wrap: wrap;
+  padding: var(--s-3) var(--s-10);
+  background: var(--chrome);
+  flex-shrink: 0;
+}
+.study-bar-main { min-width: 0; }
+.study-bar h1 { font-size: var(--fs-lg); margin-bottom: var(--s-1); }
+.study-counts { display: flex; gap: var(--s-6); flex-wrap: wrap; }
+.study-count { display: flex; flex-direction: column; }
+.study-count-n {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+  font-size: var(--fs-xl);
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.1;
+}
+.study-count.is-finding .study-count-n { color: var(--finding); }
+.study-count-l { font-size: var(--fs-xs); color: var(--ink-3); letter-spacing: .005em; }
+
+.study-alerts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-10);
+  background: var(--ground);
+  flex-shrink: 0;
+}
+
+/* ═══ 17. Leyenda de las cajas ═══ */
+.legend { display: flex; flex-wrap: wrap; gap: var(--s-4); }
+.legend-item {
+  display: flex; align-items: center; gap: var(--s-2);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.legend-swatch { width: 20px; height: 0; flex: 0 0 20px; }
+.swatch-solid  { border-top: 3px solid var(--finding); }
+.swatch-dashed { border-top: 3px dashed var(--caution); }
+.legend-item { color: var(--ink-2); }
+
+/* ═══ 18. Tablas ═══ */
+.table-wrap {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface-1);
+  overflow-x: auto;
+  min-width: 0;
+}
+.data-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.data-table th {
+  background: var(--surface-2);
+  color: var(--ink-3);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: .005em;
+  padding: var(--s-3) var(--s-4);
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+}
+.data-table td {
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--line);
+  color: var(--text-2);
+  vertical-align: middle;
+}
+.data-table tbody tr:last-child td { border-bottom: none; }
+.data-table tbody tr { transition: background .12s var(--ease); }
+.data-table tbody tr:hover td { background: var(--surface-2); }
+.data-table tbody tr.is-legacy td { color: var(--text-3); }
+
+/* Encabezado ordenable */
+.th-sort {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+.th-sort:hover { color: var(--text); }
+.th-sort::after {
+  content: '';
+  width: 0; height: 0;
+  border-left: 3.5px solid transparent;
+  border-right: 3.5px solid transparent;
+  opacity: 0;
+}
+.th-sort[data-dir="asc"]::after  { border-bottom: 4px solid currentColor; opacity: 1; }
+.th-sort[data-dir="desc"]::after { border-top: 4px solid currentColor; opacity: 1; }
+.data-table .num { color: var(--text); }
+.td-id { font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1; font-size: var(--fs-xs); color: var(--text-3); }
+/* Un `view-transition-name` sobre una caja inline se descarta: el número
+   del análisis tiene que ser una caja propia para poder viajar al visor. */
+.td-nid { display: inline-block; }
+
+/* Controles de la tabla */
+.table-controls {
+  display: flex;
+  gap: var(--s-3);
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: var(--s-4);
+}
+.search-field { position: relative; flex: 1 1 220px; max-width: 400px; min-width: 0; }
+.search-field svg {
+  position: absolute; left: var(--s-3); top: 50%; transform: translateY(-50%);
+  width: 16px; height: 16px; color: var(--text-3); pointer-events: none;
+}
+.search-field input { padding-left: 36px; }
+
+.seg { display: inline-flex; background: var(--chrome); border: 1px solid var(--rule-2); border-radius: var(--r-sm); padding: 2px; gap: 2px; }
+.seg button {
+  min-height: 36px;
+  padding: 0 var(--s-3);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .16s var(--ease), color .16s var(--ease);
+}
+.seg button:hover { color: var(--ink); background: var(--ground-2); }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.seg button .count { color: var(--ink-3); font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1; margin-left: 4px; }
+.seg button[aria-pressed="true"] .count { color: var(--accent); }
+
+.table-foot {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: var(--s-3); flex-wrap: wrap;
+  margin-top: var(--s-3);
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+}
+.pager { display: flex; gap: var(--s-2); align-items: center; }
+
+.empty-state {
+  text-align: center;
+  padding: var(--s-16) var(--s-6);
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  color: var(--text-2);
+}
+.empty-state svg { width: 34px; height: 34px; color: var(--text-3); margin-bottom: var(--s-4); }
+.empty-state p { margin-bottom: var(--s-4); }
+
+/* ═══ 19. Formularios ═══ */
+.field-group { margin-bottom: var(--s-4); min-width: 0; }
+.field-label {
+  display: block;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: var(--s-2);
+}
+.field-hint { font-size: var(--fs-sm); color: var(--text-3); margin-top: var(--s-2); line-height: 1.5; }
+
+input[type=text], input[type=email], input[type=password], input[type=search], textarea, select {
+  width: 100%;
+  min-height: var(--tap);
+  padding: var(--s-3);
+  background: var(--chrome);
+  border: 1px solid var(--rule-2);
+  border-radius: var(--r-md);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: var(--fs-base);
+  transition: border-color .16s var(--ease), background .16s var(--ease), box-shadow .16s var(--ease);
+}
+textarea { min-height: 84px; resize: vertical; line-height: 1.6; }
+input::placeholder, textarea::placeholder { color: var(--text-3); opacity: 1; }
+input:hover, textarea:hover, select:hover { border-color: var(--ink-3); }
+/* Foco del campo, literal de la guía: borde de 2 px MÁS el anillo de dos
+   capas. El borde engorda hacia adentro (`inset`) para no correr el campo
+   ni un píxel cuando se tabula hasta él. */
+input:focus-visible, textarea:focus-visible, select:focus-visible {
+  border-color: var(--accent);
+  background: var(--chrome);
+  box-shadow: inset 0 0 0 1px var(--accent), 0 0 0 2px var(--kb-bg);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+input:disabled, textarea:disabled, select:disabled {
+  background: var(--kb-disabled);
+  color: var(--kb-disabled-ink);
+  border-color: transparent;
+  cursor: not-allowed;
+}
+select {
+  appearance: none;
+  padding-right: 36px;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%235C6074' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.6' d='M3 6l5 5 5-5'/%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right var(--s-3) center;
+  background-size: 15px;
+}
+
+/* ═══ 20. Carga ═══ */
+.upload-tabs { display: flex; gap: var(--s-1); border-bottom: 1px solid var(--line); margin-bottom: var(--s-5); }
+.upload-tab {
+  min-height: var(--tap);
+  padding: 0 var(--s-4);
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-3);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color .16s var(--ease), border-color .16s var(--ease);
+}
+.upload-tab:hover { color: var(--text-2); }
+.upload-tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+
+.dropzone {
+  position: relative;
+  border: 1px dashed var(--line-2);
+  border-radius: var(--r-lg);
+  padding: var(--s-10) var(--s-6);
+  text-align: center;
+  background: var(--surface-1);
+  transition: border-color .18s var(--ease), background .18s var(--ease);
+  margin-bottom: var(--s-4);
+}
+.dropzone:hover, .dropzone.is-dragover { border-color: var(--accent); background: var(--accent-bg); }
+/* Al soltar encima: el borde se cierra (punteado -> lleno), aparece un aro
+   interior y el ícono se levanta. Tres señales que dicen lo mismo — "acá
+   se suelta" — sin que nada se mueva más de 3 px. */
+.dropzone.is-dragover {
+  border-style: solid;
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+}
+.dropzone.is-dragover .dropzone-icon { transform: translateY(-3px); color: var(--accent-2); }
+.dropzone.is-dragover .dropzone-text { color: var(--text); }
+.dropzone input[type=file] {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  opacity: 0; cursor: pointer;
+}
+.dropzone input[type=file]:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; }
+.dropzone-icon {
+  color: var(--text-3);
+  margin-bottom: var(--s-3);
+  transition: transform .16s var(--ease), color .16s var(--ease);
+}
+.dropzone-icon svg { width: 34px; height: 34px; }
+.dropzone-text { font-size: var(--fs-md); font-weight: 500; color: var(--text); margin-bottom: var(--s-2); }
+.dropzone-hint { font-size: var(--fs-sm); color: var(--text-3); }
+
+/* Archivo elegido: el usuario tiene que ver QUÉ va a analizar */
+/* La confirmación del archivo elegido aparecía de golpe y empujaba media
+   página. Entra con su propia altura ya reservada por el flujo, bajando 5 px:
+   el ojo la sigue en vez de sobresaltarse. */
+.file-chosen {
+  display: none;
+  opacity: 0;
+  transform: translateY(-5px);
+  transition: opacity .2s var(--ease), transform .2s var(--ease),
+              display .2s allow-discrete;
+  align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-3) var(--s-4);
+  background: var(--surface-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  margin-bottom: var(--s-4);
+  min-width: 0;
+}
+.file-chosen.is-visible { display: flex; opacity: 1; transform: none; }
+@starting-style {
+  .file-chosen.is-visible { opacity: 0; transform: translateY(-5px); }
+}
+.file-thumb {
+  width: 60px; height: 60px;
+  object-fit: cover;
+  background: var(--stage);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-2);
+  flex-shrink: 0;
+}
+.file-meta { min-width: 0; flex: 1; }
+.file-name {
+  font-size: var(--fs-sm);
+  color: var(--text);
+  font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.file-size { font-size: var(--fs-xs); color: var(--text-3); font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1; }
+
+.region-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: var(--s-3); }
+.region-card {
+  display: flex;
+  gap: var(--s-3);
+  text-align: left;
+  padding: var(--s-4);
+  background: var(--surface-1);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color .16s var(--ease), background .16s var(--ease);
+  min-width: 0;
+}
+.region-card:hover:not(:disabled) { border-color: var(--surface-4); background: var(--surface-2); }
+.region-card[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-bg); }
+.region-card:disabled { opacity: .45; cursor: not-allowed; }
+.region-card-icon { color: var(--accent); flex-shrink: 0; }
+.region-card-icon svg { width: 22px; height: 22px; }
+.region-card-body { min-width: 0; }
+.region-card-label { display: block; font-size: var(--fs-base); font-weight: 600; color: var(--text); }
+.region-card-desc { display: block; font-size: var(--fs-sm); color: var(--text-3); margin-top: 2px; }
+.region-card-badges { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-3); }
+.metrics-provenance { font-size: var(--fs-sm); color: var(--text-3); line-height: 1.5; margin-top: var(--s-3); }
+
+.info-card {
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: var(--s-4) var(--s-5);
+  margin-top: var(--s-4);
+}
+.info-card h3 { font-size: var(--fs-sm); margin-bottom: var(--s-2); }
+.info-card ul { padding-left: var(--s-5); }
+.info-card li { font-size: var(--fs-sm); color: var(--text-2); margin-bottom: var(--s-1); }
+
+/* ═══ 21. Overlay de progreso — la placa en lectura ═══
+   No es un spinner. Es la radiografía que el usuario acaba de entregar, con
+   una banda de barrido recorriéndola: lo que se ve es EL SISTEMA LEYENDO
+   ESA IMAGEN, no un adorno de espera.
+
+   Honestidad: el barrido es cíclico e indeterminado a propósito. No hay
+   porcentaje ni barra que se llene, porque el backend no reporta progreso y
+   fingirlo sería inventar estado del sistema. Lo único cuantitativo de esta
+   pantalla es el cronómetro, que es real. */
+/* EL VELO NO LLEVA `backdrop-filter`, Y ES UNA DECISIÓN MEDIDA.
+   Tenía `blur(3px)` sobre un fondo ya casi opaco. Medido con la banda
+   recorriendo la placa: 26 fps y 58 cuadros largos de cada 65. El motivo es
+   que el navegador vuelve a calcular el desenfoque de TODO lo que hay detrás
+   en cada cuadro en que algo se mueve encima — y acá lo que se mueve encima
+   es, justamente, lo único que esta pantalla tiene.
+
+   Se probaron las salidas habituales y ninguna sirve: `isolation: isolate`
+   en la caja (23 fps), `contain: paint` en la placa (24), una capa de
+   desenfoque separada debajo (25), y bajar el radio a 1,5 px (26 — no es el
+   radio, es el recompuesto). Desenfocar la PÁGINA en vez del fondo del velo
+   tampoco: `filter` sobre un ancestro convierte al `position: fixed` del
+   velo en absoluto y lo rompe.
+
+   Sin el desenfoque son 60 fps clavados y cero cuadros largos. Lo que se
+   pierde en apariencia se recupera subiendo el velo de .82 a .94 —medido en
+   captura, el fondo queda MÁS apagado que con el desenfoque, no menos— y lo
+   que se gana es que la única pantalla donde el médico está mirando y
+   esperando no vaya a tirones. En una defensa proyectada, 26 fps en la
+   pantalla que dura veinte segundos es lo primero que se nota. */
+.progress-overlay {
+  display: none;
+  opacity: 0;
+  position: fixed; inset: 0;
+  z-index: 900;
+  background: rgba(6,8,10,.94);
+  align-items: center; justify-content: center;
+  padding: var(--s-5);
+  transition: opacity .18s var(--ease), display .18s allow-discrete;
+}
+.progress-overlay.open { display: flex; opacity: 1; }
+@starting-style { .progress-overlay.open { opacity: 0; } }
+
+.progress-box {
+  background: var(--surface-1);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-lg);
+  padding: var(--s-6);
+  text-align: center;
+  max-width: 420px; width: 100%;
+  box-shadow: var(--shadow);
+  transition: transform .3s var(--ease);
+}
+.progress-overlay.open .progress-box { transform: translateY(0); }
+@starting-style { .progress-overlay.open .progress-box { transform: translateY(10px); } }
+
+/* La placa: cama negra, con la imagen si el navegador sabe dibujarla
+   (JPEG/PNG) y con una graticula de instrumento si no (DICOM, ZIP). */
+.scanplate {
+  position: relative;
+  width: 100%;
+  height: 168px;
+  margin-bottom: var(--s-5);
+  background: var(--stage);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+.scanplate-img {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: contain;
+  /* Sin atenuar: es una radiografía real y en una herramienta clínica no se
+     muestra una placa más apagada de lo que es, ni siquiera de miniatura. */
+}
+.scanplate-grid {
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(to right, rgba(11,165,236,.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(11,165,236,.06) 1px, transparent 1px);
+  background-size: 26px 26px;
+}
+/* Con imagen, la grilla es ruido sobre la anatomía. */
+.scanplate.has-img .scanplate-grid { display: none; }
+
+.scanplate-band {
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 26%;
+  background: linear-gradient(to bottom,
+    rgba(11,165,236,0)    0%,
+    rgba(11,165,236,.06) 45%,
+    rgba(11,165,236,.16) 80%,
+    rgba(11,165,236,.30) 95%,
+    rgba(11,165,236,.42) 100%);
+  will-change: transform;
+  /* 2,2 s eran velocidad de spinner: sobre una inferencia de CPU que puede
+     durar veinte segundos daban nueve pasadas idénticas, y a la tercera el
+     ojo deja de creerles. A 2,8 s la cabeza recorre la placa a paso de
+     lectura — más lento se lee como más minucioso, que es lo que está
+     pasando — y el que espera ve seis pasadas en vez de nueve. Sigue siendo
+     cíclico y sin pausas: un proceso indeterminado que se detiene un
+     instante parecería colgado. */
+  animation: scan-sweep 2.8s linear infinite;
+}
+/* Cabeza de lectura: la línea nítida que va adelante de la banda. */
+.scanplate-band::after {
+  content: '';
+  position: absolute; left: 0; right: 0; bottom: 0;
+  height: 1px;
+  background: var(--accent-2);
+  box-shadow: 0 0 9px 1px rgba(11,165,236,.55);
+}
+/* La opacidad entra y sale dentro del propio ciclo: sin esto el salto de
+   abajo a arriba se ve, y un instrumento no parpadea. */
+@keyframes scan-sweep {
+  0%   { transform: translateY(-100%); opacity: 0; }
+  9%   { opacity: 1; }
+  86%  { opacity: 1; }
+  100% { transform: translateY(385%); opacity: 0; }
+}
+
+/* Escuadras del encuadre: fijas, marcan el área de lectura. */
+.scanplate-mark {
+  position: absolute;
+  width: 11px; height: 11px;
+  border: 1px solid rgba(11,165,236,.42);
+}
+.scanplate-mark.tl { top: 6px; left: 6px;  border-right: 0; border-bottom: 0; }
+.scanplate-mark.tr { top: 6px; right: 6px; border-left: 0;  border-bottom: 0; }
+.scanplate-mark.bl { bottom: 6px; left: 6px;  border-right: 0; border-top: 0; }
+.scanplate-mark.br { bottom: 6px; right: 6px; border-left: 0;  border-top: 0; }
+
+.progress-title { font-size: var(--fs-md); font-weight: 600; color: var(--text); margin-bottom: var(--s-2); }
+.progress-detail { font-size: var(--fs-sm); color: var(--text-2); line-height: 1.55; }
+.progress-elapsed {
+  font-size: var(--fs-sm); color: var(--text-3); margin-top: var(--s-4);
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--line);
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+  letter-spacing: .04em;
+}
+/* El cronómetro es la prueba de vida del sistema: es lo único que sigue
+   corriendo aunque se apague todo el movimiento. */
+.progress-state { color: var(--accent); font-weight: 600; }
+.progress-elapsed .num { color: var(--text); }
+
+/* ═══ 22. Login ═══ */
+.login-shell {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s-8) var(--s-5);
+  width: 100%;
+  min-width: 0;
+}
+.login-card {
+  width: 100%;
+  max-width: 460px;
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: var(--s-8);
+  min-width: 0;
+}
+.login-head { text-align: center; margin-bottom: var(--s-6); }
+.login-mark {
+  width: 46px; height: 46px;
+  margin: 0 auto var(--s-4);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-md);
+}
+.login-mark svg { width: 26px; height: 26px; }
+.login-head h1 { font-size: var(--fs-lg); margin-bottom: var(--s-1); }
+.login-head p { font-size: var(--fs-sm); color: var(--text-3); }
+.login-note { font-size: var(--fs-sm); color: var(--text-3); text-align: center; margin-top: var(--s-4); }
+
+.demo-panel { margin-top: var(--s-5); border-top: 1px solid var(--line); padding-top: var(--s-4); }
+.demo-panel > summary {
+  cursor: pointer;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--accent);
+  list-style: none;
+  display: flex; align-items: center; gap: var(--s-2);
+  min-height: 36px;
+}
+.demo-panel > summary::-webkit-details-marker { display: none; }
+.demo-panel > summary:hover { color: var(--accent-2); }
+.demo-panel > summary .chev { width: 14px; height: 14px; transition: transform .18s var(--ease); }
+.demo-panel[open] > summary .chev { transform: rotate(90deg); }
+.demo-note {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  background: var(--caution-bg);
+  border: 1px solid var(--caution-line);
+  border-radius: var(--r-sm);
+  padding: var(--s-3);
+  margin: var(--s-3) 0;
+  line-height: 1.55;
+}
+.demo-list { display: flex; flex-direction: column; gap: var(--s-1); }
+.demo-row {
+  display: flex; align-items: center; gap: var(--s-3);
+  width: 100%;
+  min-height: var(--tap);
+  padding: var(--s-2) var(--s-3);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background .16s var(--ease), border-color .16s var(--ease);
+}
+.demo-row:hover { background: var(--surface-3); border-color: var(--line-2); color: var(--text); }
+.demo-row .demo-user { font-weight: 500; color: var(--text); flex-shrink: 0; }
+.demo-row .demo-mail {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  margin-left: auto;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.demo-row .demo-pass {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+  font-size: var(--fs-xs);
+  color: var(--accent-2);
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-sm);
+  padding: 1px 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ═══ 23. Dashboard ═══ */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr));
+  gap: var(--s-3);
+  margin-bottom: var(--s-5);
+}
+.stat {
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: var(--s-4) var(--s-5);
+  min-width: 0;
+}
+.stat-value {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+  font-size: var(--fs-2xl);
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.1;
+  letter-spacing: -.02em;
+}
+.stat-value.is-empty { color: var(--text-3); }
+.stat-label {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--ink-3);
+  letter-spacing: .005em;
+  margin-top: var(--s-2);
+}
+.stat-note { font-size: var(--fs-sm); color: var(--text-3); margin-top: var(--s-2); line-height: 1.45; }
+
+/* min() evita el desborde clásico de auto-fit: sin él, el mínimo de 340 px
+   es mayor que el viewport en un teléfono y la grilla empuja la página. */
+.charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap: var(--s-3); }
+/* Tarjeta de gráfico: la card base de KIBBO — blanco, hairline, radio 20 y
+   sombra media con tinte violeta. */
+.chart-card {
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-md);
+  padding: var(--s-6);
+  min-width: 0;
+}
+.chart-card h3 {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: var(--s-5);
+}
+.chart-box { position: relative; height: 240px; min-width: 0; }
+.chart-empty {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  height: 240px;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  text-align: center;
+  gap: var(--s-2);
+  border: 1px dashed var(--accent-line);
+  border-radius: var(--r-md);
+}
+.chart-empty svg { width: 26px; height: 26px; }
+
+/* ═══ 24. Legal ═══ */
+.legal-list { list-style: none; display: flex; flex-direction: column; gap: var(--s-4); }
+.legal-list li {
+  font-size: var(--fs-base);
+  color: var(--ink-2);
+  line-height: 1.65;
+  padding-left: var(--s-4);
+  border-left: 2px solid var(--rule-2);
+}
+.legal-list li strong { display: block; color: var(--text); margin-bottom: 2px; }
+
+/* ═══ 25. Páginas de error ═══ */
+.error-shell {
+  flex: 1;
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--s-12) var(--s-5);
+  width: 100%;
+}
+.error-box { max-width: 480px; text-align: center; }
+.error-code {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+  font-size: var(--fs-3xl);
+  color: var(--text-3);
+  line-height: 1;
+  margin-bottom: var(--s-4);
+}
+.error-box h1 { margin-bottom: var(--s-3); }
+.error-box p { margin-bottom: var(--s-6); }
+.error-box .actions-bar { justify-content: center; }
+
+/* ═══ 26. Opinión profesional ═══ */
+.feedback-buttons { display: flex; gap: var(--s-3); margin-top: var(--s-4); flex-wrap: wrap; }
+.feedback-done {
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  background: var(--chrome);
+  border-left: 3px solid var(--rule-2);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  padding: var(--s-3) var(--s-4);
+  line-height: 1.6;
+}
+
+/* ═══ 27. Informe ═══ */
+.report-text {
+  background: var(--chrome);
+  border-left: 2px solid var(--rule-2);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  padding: var(--s-3) var(--s-4);
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ═══ 28. Modal ═══ */
+.modal-overlay {
+  display: none;
+  opacity: 0;
+  position: fixed; inset: 0;
+  background: rgba(26,16,64,.42);
+  backdrop-filter: blur(3px);
+  z-index: 1000;
+  align-items: center; justify-content: center;
+  padding: var(--s-5);
+  transition: opacity .16s var(--ease), display .16s allow-discrete;
+}
+.modal-overlay.open { display: flex; opacity: 1; }
+@starting-style { .modal-overlay.open { opacity: 0; } }
+.modal-box {
+  background: var(--surface-1);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-lg);
+  padding: var(--s-6);
+  max-width: 440px; width: 100%;
+  box-shadow: var(--shadow);
+}
+/* El modal no cuelga de ningún disparador, así que escala desde su centro.
+   Nunca desde 0: nada aparece de la nada. */
+.modal-overlay.open .modal-box { transform: none; transition: transform .2s var(--ease); }
+@starting-style { .modal-overlay.open .modal-box { transform: scale(.97); } }
+.modal-box h3 { margin-bottom: var(--s-4); }
+.modal-actions { display: flex; gap: var(--s-3); justify-content: flex-end; margin-top: var(--s-5); }
+
+/* ═══ 29. Footer ═══ */
+/* El pie es CROMO, igual que el membrete: la hoja gris queda encerrada
+   arriba y abajo por blanco. Sin filete — el salto de valor ya es el
+   canto, y el único filete estructural de la página es vertical. */
+.footer {
+  background: var(--chrome);
+  padding: var(--s-3) var(--s-10);
+  flex-shrink: 0;
+}
+.footer-inner {
+  max-width: none;
+  margin: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-5);
+  flex-wrap: wrap;
+}
+/* Filete NEUTRO, no ámbar. El aviso legal está en el pie de las 7
+   pantallas, siempre, diga lo que diga el estudio: es el marco jurídico del
+   producto, no una salvedad sobre ESTE paciente. En ámbar era el ámbar más
+   repetido de la app y no significaba nada — un color de estado que nunca
+   cambia de estado deja de leerse como estado y se lleva puesto el de al
+   lado. La salvedad clínica que sí es de este estudio vive en `.scope-line`
+   y ahí el ámbar sí dice algo. */
+.disclaimer {
+  flex: 1 1 420px;
+  min-width: 0;
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--ink-2);
+  border-left: 2px solid var(--rule-2);
+  padding-left: var(--s-3);
+}
+.footer-text { font-size: var(--fs-xs); color: var(--ink-3); margin-left: auto; text-align: right; }
+
+/* ═══ 30. Utilidades ═══ */
+.stack   { display: flex; flex-direction: column; gap: var(--s-4); }
+.stack-2 { display: flex; flex-direction: column; gap: var(--s-2); }
+.row     { display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap; }
+.muted   { color: var(--text-3); }
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.meta-line {
+  display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-3);
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+}
+/* `.ov-key` fuera de la placa NO lleva el quemado: la mayúscula espaciada
+   es un material del negatoscopio y acá sería la textura que se barrió. */
+.meta-line .ov-key { color: var(--ink-3); letter-spacing: .005em; text-transform: none; }
+.meta-line strong { color: var(--ink); font-weight: 600; }
+
+/* Registro heredado: fuera del dominio validado */
+.legacy-flag {
+  display: flex; align-items: flex-start; gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border-left: 3px solid var(--caution);
+  background: var(--caution-soft);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  font-size: var(--fs-sm);
+  color: var(--caution-ink);
+  line-height: 1.55;
+}
+.legacy-flag svg { width: 18px; height: 18px; color: var(--caution); margin-top: 1px; }
+
+/* ═══ 31. Responsive ═══
+   ----------------------------------------------------------------------
+   El visor NO colapsa a una columna apenas se achica la pantalla.
+
+   Colapsar temprano costaba dos cosas a la vez. La lectura de triage
+   pasaba a ser un bloque DESPUÉS de la placa, y la placa mide todo el
+   alto: en 1024x768 —la resolución de un proyector de aula— la palabra del
+   veredicto caía en y=700 sobre 768 y el médico no la veía sin scrollear.
+   Y de paso la placa perdía caja: quedaba en 47 % de zoom.
+
+   Una radiografía de muñeca es VERTICAL: en estos anchos sobra ancho y
+   falta alto. Así que mientras entren dos columnas se mantienen las dos
+   —el panel se angosta, no se va abajo—. La placa conserva el alto
+   completo y el veredicto se queda arriba del panel, que es donde el
+   diseño ya lo había puesto. */
+@media (max-width: 1180px) {
+  .reader { grid-template-columns: minmax(0, 1fr) 1px 372px; padding: var(--s-4) var(--s-5); }
+  .stage { padding-right: var(--s-5); }
+  .readout { padding-left: var(--s-5); }
+  .navbar, .study-bar, .study-alerts, .footer { padding-left: var(--s-5); padding-right: var(--s-5); }
+  /* Que la barra no desborde ya lo garantiza `overflow-x` (§8). Esto es lo
+     otro: que además ENTRE, porque un enlace que hay que ir a buscar
+     desplazando es un enlace que en una defensa proyectada no existe. En
+     esta franja —de 861 a 1180— los cinco enlaces y el nombre del usuario
+     no caben a la vez con las medidas de escritorio, así que ceden las dos
+     cosas que no son navegación: el aire entre enlaces y el largo del
+     nombre, que ya venía recortándose con puntos suspensivos. */
+  .nav-links { gap: var(--s-4); }
+  .nav-user { margin-left: var(--s-5); }
+  .nav-user-name { max-width: 132px; }
+  /* Y CAE EL SUBTÍTULO ACADÉMICO. Con el aire y el nombre ya recortados, a
+     1024x768 —el proyector— seguían sobrando 41 px: `Alcance`, el último
+     enlace, quedaba cortado al medio dentro de la franja desplazable y en
+     pantalla se leía «Al». Un enlace partido no se lee como «hay más a la
+     derecha», se lee como que la barra está rota, y es lo primero que ve
+     el tribunal.
+     `Ingeniería Biomédica · UNC` mide 185 px y es MEMBRETE, no navegación:
+     no lleva a ningún lado, y la misma procedencia está escrita en el pie
+     de las siete pantallas. Entre el gesto y los cinco enlaces enteros,
+     ganan los enlaces. Es la misma decisión que ya se había tomado en 375,
+     un breakpoint más abajo. */
+  .nav-sub { display: none; }
+
+  /* EL QUEMADO SALE DE LA PLACA — y el corte va acá, en 1180, no en 860.
+     La regla de fondo es una sola: el sobreimpreso se apoya en el MARGEN
+     NEGRO de la película, nunca en la anatomía. Así que el breakpoint
+     correcto no es «teléfono», es «hasta dónde hay margen negro».
+
+     Medido con el estudio 601 (placa vertical), margen a cada lado y área
+     del bloque de identificación que cae sobre la imagen:
+        1440 → margen 316 px · 0 px² encima · contraste 13,03:1 (negro puro)
+        1180 → margen 226 px · 0 px² encima
+        1024 → margen 159 px · 5.150 px² encima · peor píxel 1,54:1, p95 1,96:1
+         900 → margen 123 px · 8.520 px² encima
+      375 → sin margen
+     O sea que a 1024x768 —LA RESOLUCIÓN DEL PROYECTOR DEL AULA— el rótulo
+     `REGIÓN Muñeca — Pediátrica` ya estaba apoyado sobre hueso claro y no
+     se leía. Es el mismo defecto que el juez midió en 375, más chico.
+
+     Se probó acotar el ancho del bloque para que entre en el margen (46 %
+     → 30 % → 25 % → 22 %): no cierra. A 900 el margen mide 123 px y ni al
+     22 % entra, y un porcentaje que sirva a 900 deja el quemado en una
+     tira ilegible a 1440. El margen depende de la proporción de CADA placa
+     y el CSS no la conoce, así que no hay clamp honesto: o hay margen o no
+     lo hay.
+
+     Debajo de 1180 no lo hay, y entonces el quemado no se achica ni se
+     sombrea: SE VA DE LA PELÍCULA. Baja a `.plate-meta`, sobre la hoja,
+     donde mide 8,51:1 y no tapa nada. No se pierde ni un dato.
+
+     Las dos esquinas de abajo se quedan en los cuatro anchos: ZOOM y
+     MARCAS no son quemado, son el estado vivo del instrumento y tienen que
+     estar donde está la mano (ver la nota en §Sobreimpresión). */
+  .overlay-tl, .overlay-tr { display: none; }
+  .plate-meta { display: flex; }
+  /* Con la platina más angosta, la ayuda de mouse ya no entra en la fila y
+     empuja la barra a dos: 40 px menos de placa a cambio de un texto que
+     no decide nada clínico. Gana la placa. */
+  .tool-label { display: none; }
+}
+@media (max-width: 1000px) {
+  .reader { grid-template-columns: minmax(0, 1fr) 1px 330px; padding: var(--s-3) var(--s-4); }
+  .stage { padding-right: var(--s-4); }
+  .readout { padding-left: var(--s-4); padding-right: var(--s-2); }
+  .navbar, .study-bar, .study-alerts, .footer { padding-left: var(--s-4); padding-right: var(--s-4); }
+  :root { --fs-verdict: 2.125rem; }   /* 34px: el cartel sigue siendo cartel */
+}
+
+@media (max-width: 860px) {
+  /* Recién acá no entran dos columnas legibles. Una sola: el visor arriba
+     con altura propia, la lectura debajo en el flujo normal de la página.
+     El veredicto se muda a la franja fija del visor (34.e) para no caer
+     bajo el pliegue, y la placa se lleva casi todo el alto disponible: lo
+     que asoma abajo alcanza para que se vea que hay más. */
+  /* La página vuelve a desplazarse: acá el informe va DEBAJO de la placa y
+     tiene que poder crecer. Se revierte el encaje de una sola pantalla. */
+  body:has(> .main-stage) { height: auto; overflow: visible; }
+  body:has(> .main-stage) .main-stage { flex: none; }
+  .main-stage { height: auto; overflow: visible; }
+  .reader {
+    grid-template-columns: 1fr;
+    height: auto; overflow: visible; flex: none;
+    padding: var(--s-3);
+    row-gap: var(--s-5);
+  }
+  /* El filete es la separación de DOS COLUMNAS. En una sola no separa
+     nada: lo que separa es el orden vertical. */
+  .split { display: none; }
+  .stage { padding-right: 0; height: 82dvh; min-height: 420px; }
+  .readout { padding-left: 0; padding-right: 0; overflow: visible; }
+  /* El despegado de la barra de acciones NO va acá, por exactamente la
+     misma razón que el encendido de la franja (ver abajo): una media query
+     no agrega especificidad, y `.rd-actions { position: static }` escrito
+     acá —880 líneas ANTES de `.rd-actions { position: sticky }` (34.g)—
+     perdía por orden de cascada. La barra quedaba pegajosa en el teléfono:
+     132 px sobre 667, el 20 % de la pantalla, viajando encima del informe
+     todo el recorrido. El override vive junto al componente, en 34.g. */
+
+  /* El estudio lleva ADEMÁS una barra propia arriba del visor, y hay que
+     descontarla o la placa se pasa del pliegue: se le cortaba el borde de
+     abajo y el sobreimpreso del zoom quedaba afuera de la pantalla.
+
+     82 px es lo que mide esa barra en una fila. Es una estimación —el CSS
+     no puede leer el alto de un hermano— y va siempre por exceso a
+     propósito: quedarse corto recorta la placa, pasarse sólo deja un poco
+     más de asomo del panel. */
+  .study-bar ~ .reader .stage { height: calc(82dvh - 82px); min-height: 340px; }
+
+  /* El encendido de la franja NO va acá: vive junto al componente (34.e).
+     Una media query no agrega especificidad, así que puesto acá —cientos
+     de líneas ANTES de `.verdict-strip { display: none }`— perdería por
+     orden de cascada y la franja no aparecería nunca. */
+
+  /* La barra del visor en UNA fila que se desplaza, como ya hacen los
+     enlaces de la navegación en este mismo ancho. Envuelta en dos filas le
+     comía 40 px de alto a la placa, que es justo lo que falta acá. */
+  .toolbar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .toolbar::-webkit-scrollbar { display: none; }
+  .tool, .tool-sep, .tool-pop { flex-shrink: 0; }
+}
+
+@media (max-width: 860px) {
+  :root { --nav-h: auto; }
+  .navbar {
+    flex-wrap: wrap;
+    padding: var(--s-2) var(--s-4);
+    row-gap: var(--s-1);
+  }
+  .nav-brand { order: 1; }
+  .nav-user  { order: 2; margin-left: auto; }
+  /* La procedencia académica es un gesto de MEMBRETE: marca, filete
+     vertical, subtítulo. En 375 px no hay ancho para los tres y el
+     subtítulo, al no llevar `order`, se colaba en el renglón de ARRIBA de
+     la marca. En una pantalla de teléfono la marca se defiende sola. */
+  .nav-sub { display: none; }
+
+  /* El rótulo de las dos esquinas que quedan vuelve a ir EN LÍNEA con su
+     valor: el bloque al doble de alto no cabe en el canto del
+     negatoscopio. */
+  .overlay .ov-key { display: inline; margin-top: 0; }
+  .overlay { line-height: 1.5; }
+  /* Al canto: el ZOOM se apoyaba 16 px dentro del borde inferior de la
+     imagen. Pegado al piso del negatoscopio queda sobre negro con la placa
+     en reposo. Si el médico la desplaza, lo cubre la placa oscura de 560. */
+  .overlay-bl, .overlay-br { bottom: var(--s-1); }
+  /* Los enlaces pasan a una segunda fila desplazable: nunca se salen de
+     pantalla ni empujan el botón "Salir" fuera del viewport. */
+  .nav-links {
+    order: 3;
+    flex: 1 0 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+    /* En 375 los cinco enlaces NO entran, y eso es el diseño: se desplazan.
+       Lo que hay que decir es que se desplazan. Sin esto, el último enlace
+       terminaba cortado a filo del borde —«Administració»— y un tajo recto
+       se lee como una barra rota, no como una lista que sigue. El desvanecido
+       de los últimos 24 px convierte el corte en un borde blando, que es el
+       gesto que todo el mundo reconoce como «hay más acá». No agrega ningún
+       elemento nuevo ni tapa un enlace: sólo hace honesta la geometría que
+       ya estaba. */
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+            mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  }
+  .nav-links::-webkit-scrollbar { display: none; }
+  .container, .container-narrow { padding: var(--s-5) var(--s-4); }
+  .footer { padding: var(--s-4); }
+  .footer-text { margin-left: 0; text-align: left; }
+  .nav-user-name { max-width: 120px; }
+  /* En pantallas táctiles todo lo que se toca llega a 44 px. */
+  .btn-sm, .seg button, .upload-tab { min-height: var(--tap); }
+  .nav-links a { height: var(--tap); }
+  .data-table td .btn-sm { min-height: 40px; }
+}
+
+@media (max-width: 560px) {
+  :root { --fs-3xl: 2rem; --fs-2xl: 1.75rem; --fs-xl: 1.375rem; --fs-verdict: 2rem; }
+  .reader { padding: var(--s-2); }
+  /* LO QUE QUEDA EN LAS ESQUINAS SE APOYA EN SU PROPIA PLACA.
+     A esta altura ya no hay quemado de identificación sobre la imagen: se
+     mudó a `.plate-meta`, bajo la placa (ver 860). Lo que sigue en las dos
+     esquinas de abajo es ZOOM y MARCAS, el estado vivo del instrumento,
+     que tiene que estar donde está la mano.
+
+     Esos dos quedan sobre negro con la placa en reposo, pero la placa se
+     desplaza y se agranda: en cuanto el médico la mueve, el hueso pasa por
+     debajo y un gris claro sobre blanco no se lee. La placa oscura resuelve
+     el único caso que queda, y es un objeto de 20x47 px en un canto: la
+     oclusión es deliberada, tiene borde, se reconoce como cromo y no como
+     imagen, y no tapa ningún dato que no se pueda recuperar soltando el
+     desplazamiento. */
+  .overlay {
+    font-size: 9px;
+    max-width: 40%;
+    background: rgba(8,4,23,.68);
+    padding: 3px 6px;
+    border-radius: 2px;
+    text-shadow: none;
+  }
+  .overlay strong { font-size: 11px; }
+  .container, .container-narrow { padding: var(--s-4) var(--s-3); }
+  .card { padding: var(--s-4); }
+  .login-card { padding: var(--s-5); }
+  .readout { padding: var(--s-4); }
+  .toolbar { gap: 0; }
+  .tool { width: 40px; height: 40px; }
+  /* El nombre completo empuja la barra a una fila más; "Salir" alcanza. */
+  .nav-user-name { display: none; }
+  /* Instrucciones de mouse en una pantalla táctil no sirven. */
+  .tool-label { display: none; }
+  /* Acá la barra del estudio ya se partió en dos filas. */
+  .study-bar ~ .reader .stage { height: calc(82dvh - 140px); }
+  .feedback-buttons .btn { flex: 1 1 100%; }
+  /* El control segmentado no entra en 320 px: se desplaza en vez de empujar
+     la página entera hacia la derecha. */
+  .table-controls > .seg,
+  .readout > .seg {
+    display: flex;
+    width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .table-controls > .seg::-webkit-scrollbar,
+  .readout > .seg::-webkit-scrollbar { display: none; }
+  .seg button { flex: 1 0 auto; }
+  .search-field { max-width: none; }
+  .demo-row { flex-wrap: wrap; }
+  .demo-row .demo-mail { margin-left: 0; flex: 1 0 100%; }
+  .demo-row .demo-pass { margin-left: 0; }
+  .stat-grid { grid-template-columns: 1fr; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   32. MOVIMIENTO
+   ----------------------------------------------------------------------
+   Una sola figura de movimiento en toda la app: EL BARRIDO. Es la misma
+   gramática dos veces, y sólo dos:
+
+     · mientras el modelo trabaja, una banda recorre la placa (sección 21);
+     · al abrir el resultado, esa misma banda pasa una vez sobre la imagen
+       y detrás de ella queda la imagen anotada.
+
+   Lo demás son acuses de recibo de menos de 250 ms. Nada decorativo, nada
+   que se repita sin motivo, nada que tape una salvedad clínica: los avisos
+   y las notas clínicas están en pantalla desde el primer cuadro y no
+   participan de ninguna animación.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─── 32.a El barrido del visor ───────────────────────────────────────
+   Las cajas vienen quemadas en el PNG anotado del servidor, así que el
+   revelado se hace con dos capas: abajo la placa original, arriba la
+   anotada recortada con clip-path. La línea que viaja no dibuja las cajas:
+   descubre las que el servidor ya dibujó. Estado por defecto = estado
+   final: si el JS no corre, la anotada está entera desde el principio. */
+.stage-img-base { z-index: 0; }
+.stage-img-top  { z-index: 1; }
+
+/* Misma construcción que .scanplate-band: cuerpo de luz que se apaga hacia
+   atrás + cabeza de lectura nítida adelante. Es a propósito la misma figura
+   que la del overlay de progreso: lo que leyó la placa es lo que ahora
+   descubre lo que encontró. */
+.scanline {
+  position: absolute;
+  z-index: 3;
+  height: 78px;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(to bottom,
+    rgba(11,165,236,0)    0%,
+    rgba(11,165,236,.05) 50%,
+    rgba(11,165,236,.16) 90%,
+    rgba(11,165,236,.30) 100%);
+  will-change: transform;
+}
+.scanline::after {
+  content: '';
+  position: absolute; left: 0; right: 0; bottom: 0;
+  height: 2px;
+  /* Se apaga en las puntas: la cabeza entra y sale de la placa, no es una
+     regla de lado a lado. */
+  background: linear-gradient(to right,
+    rgba(11,165,236,0) 0%, var(--plate-accent) 10%,
+    var(--plate-accent) 90%, rgba(11,165,236,0) 100%);
+  box-shadow: 0 0 18px 3px rgba(11,165,236,.5);
+}
+
+/* ─── 32.b LA REGLA DE LAS MAGNITUDES ─────────────────────────────────
+   Ninguna geometría que represente una cantidad medida puede animarse en
+   la dimensión que porta esa cantidad. Ni un contador que sube, ni una
+   barra que se extiende, ni un intervalo que se abre, ni un punto que
+   viaja por su eje.
+
+   El argumento es el mismo en los cuatro casos y no es estético: durante
+   la animación la pantalla AFIRMA un valor que el sistema no calculó. Un
+   contador que sube a 78 muestra 62, 70, 75; una barra que sale de
+   `scaleX(0)` al lado de un número que ya dice 78 % muestra exactamente lo
+   mismo, en geometría. A 420 ms son ~25 cuadros grabables. Es lo único de
+   esta interfaz que se puede impugnar con una captura de pantalla.
+
+   Corolario que hay que dejar escrito, porque parece una salida y no lo
+   es: TAMPOCO SIRVE UNA MÁSCARA QUE BARRA de izquierda a derecha. Sobre
+   una barra maciza da los mismos píxeles que `scaleX` y por lo tanto los
+   mismos cuadros falsos. Lo que no se puede mover es el BORDE que marca el
+   valor.
+
+   Lo que sí puede entrar: la OPACIDAD, y las dimensiones que no portan el
+   dato (el grosor de una barra, el tamaño de un punto cuya POSICIÓN ya es
+   la correcta). La forma canónica es ésta, y la usan las
+   barras de hallazgo y el intervalo de confianza. */
+@keyframes fill-land { from { opacity: 0; } }
+
+@media (prefers-reduced-motion: no-preference) {
+  /* ─── 32.d Navegación entre páginas ─────────────────────────────────
+     La app son páginas Jinja con navegación clásica. Entre historial y
+     visor, el navegador pintaba un cuadro en blanco. Con View Transitions
+     el chasis (barra y pie) queda clavado — porque ES el mismo chasis — y
+     sólo cambia el contenido. Donde no está soportado, la navegación es la
+     de siempre: no hay nada que degradar. */
+  @view-transition { navigation: auto; }
+
+  .navbar { view-transition-name: tv-chasis-barra; }
+  .footer { view-transition-name: tv-chasis-pie; }
+
+  ::view-transition-old(root) { animation: tv-salir .1s linear both; }
+  ::view-transition-new(root) { animation: tv-entrar .24s var(--ease) both; }
+  @keyframes tv-salir  { to   { opacity: 0; } }
+  @keyframes tv-entrar { from { opacity: 0; } }
+}
+
+/* ─── 32.e Movimiento reducido ────────────────────────────────────────
+   Requisito de accesibilidad, no un apagado de última hora. Todo lo que
+   traslada, escala o se repite queda quieto; lo que informa (color, foco,
+   estado) sigue. La app queda 100 % usable y legible:
+
+   · el revelado del visor no corre — la imagen anotada está entera desde
+     el primer cuadro (el JS consulta la media query y ni siquiera arranca);
+   · las barras se pintan en su valor final, sin animación. Acá no se pierde
+     nada: por la regla de §32.b su LARGO ya era el final en el primer
+     cuadro también con movimiento, y lo único que se apaga es el fundido;
+   · el overlay de progreso NO pierde su señal de trabajo: la banda queda
+     posada sobre la placa, quieta, y el cronómetro sigue corriendo — un
+     texto que cambia cada segundo prueba que el sistema está vivo mejor
+     que cualquier movimiento. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* Sin esto, la regla de arriba deja la banda a mitad de camino y con la
+     opacidad del último cuadro. Se la fija a mano: apoyada, visible, fija. */
+  .scanplate-band {
+    animation: none !important;
+    transform: translateY(150%);
+    opacity: .85;
+  }
+  .scanline { display: none; }
+  .dropzone.is-dragover .dropzone-icon { transform: none; }
+}
+
+/* ═══ 33. Impresión ═══ */
+@media print {
+  .navbar, .toolbar, .filmstrip, .actions-bar, .footer, .feedback-buttons,
+  .split, .rd-actions { display: none !important; }
+  body { background: #fff; color: #1a1040; }
+  .reader { display: block; }
+  .stage { background: #fff; }
+}
+
+/* Acciones a la derecha del encabezado de página (exportar, etc.) */
+.page-header-actions { display: flex; gap: var(--s-2); flex-wrap: wrap; align-items: center; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   34. LECTURA DE GUARDIA
+   ----------------------------------------------------------------------
+   El panel de lectura dejó de ser una pila de tarjetas con borde. Un
+   médico apurado no lee cinco cajas del mismo peso: lee una jerarquía.
+
+   Tres zonas, dos hairlines, cero tarjetas:
+     1. TRIAGE — el veredicto y la escalera de urgencia.
+        Está completo y legible desde el cuadro cero, sin delay ni stagger.
+     2. HALLAZGOS — lista interactiva ligada a la placa.
+     3. LO DEMÁS — alcance clínico, detalle técnico y opinión, plegados.
+
+   La jerarquía la hacen el tamaño y el aire, no más bordes.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* El panel maneja su propio ritmo: aire, no cajas ni filetes. */
+.readout { gap: 0; padding-bottom: 0; }
+.readout > * { flex-shrink: 0; }
+
+/* Cintillo del informe: qué es esto, y de qué registro habla. */
+.rd-top {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--s-3);
+  margin-bottom: var(--s-3);
+  padding: 0 var(--s-2);
+}
+.rd-id { font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1; font-size: var(--fs-xs); color: var(--ink-3); }
+
+/* `.rule` era un <hr> entre el triage y los hallazgos. Se fue: de siete
+   filetes horizontales en esta columna quedó UNO, el que abre el grupo de
+   plegables. Lo que separaba ese <hr> ahora lo separa el aire. La clase
+   queda declarada e inerte para no romper ninguna plantilla que la use. */
+.rule { display: none; }
+
+/* ─── 34.a Bloque de triage ─────────────────────────────────────────── */
+/* Sin riel vertical a la izquierda: el estado ya lo dice el color de la
+   palabra. Un segundo marcador para el mismo dato es ruido.
+
+   ES LA CARD DESTACADA DE LA PANTALLA, y KIBBO permite una sola: radio 28,
+   sombra XL, y un escalón de tamaño sobre sus hermanas. Acá el escalón no
+   es `scale(1.04)` —escalar una tarjeta con un número clínico adentro lo
+   desenfoca— sino la sombra y el radio, que son los otros dos ejes con los
+   que la guía la distingue.
+
+   Lo que NO lleva es el gradiente firma. La guía lo prohíbe explícitamente
+   debajo de texto de cuerpo, y esta tarjeta tiene tres párrafos; pero
+   además el veredicto porta el triage EN EL COLOR DE LA PALABRA, y sobre
+   un gradiente violeta-cian ninguna palabra puede portar un matiz. */
+.triage {
+  position: relative;
+  background: var(--chrome);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-xl);
+  box-shadow: var(--sh-xl);
+  padding: var(--s-6);
+}
+
+.verdict-word {
+  font-size: var(--fs-verdict);
+  font-weight: 800;
+  letter-spacing: -.035em;
+  line-height: .92;
+  color: var(--ink);
+  text-transform: uppercase;
+  margin: 0;
+  text-wrap: balance;
+}
+/* Mayúscula CON TRACKING NEGATIVO. No es la mayúscula espaciada que se
+   barrió del resto de la app: aquella abría las letras para hacer textura,
+   ésta las aprieta para hacer masa. Son dos gestos opuestos. */
+/* En los tokens de TEXTO GRANDE, que es lo que esta palabra es. El
+   `--caution` de texto normal (#725226) sobre 40 px leía oliva, y el color
+   con el que la pantalla anuncia el triage no puede ser un marrón. */
+.triage.urgency-high       .verdict-word { color: var(--finding-display); }
+.triage.urgency-medium     .verdict-word { color: var(--caution-display); }
+.triage.urgency-borderline .verdict-word { color: var(--caution-display); }
+
+.verdict-sub {
+  font-size: var(--fs-base);
+  color: var(--ink-2);
+  line-height: 1.5;
+  margin-top: var(--s-3);
+  max-width: 34ch;
+}
+
+/* Filete de urgencia — macizo, 44x4, encima de la palabra. El de la
+   maqueta. Acá vivió una ESCALERA de cuatro peldaños: el razonamiento
+   completo de por qué se retiró está en el macro `urgency_rule`
+   (_macros.html), al lado del marcado.
+
+   Resumen: no agregaba información que la PALABRA no diera mejor, no se
+   leía sin una leyenda que no existía, sus peldaños apagados medían 1,24:1
+   —invisibles, y son los que constituyen la escala—. Este filete no
+   codifica nada por su tamaño: es de medida fija y repite el color de la
+   palabra.
+   Nunca verde — el nivel más bajo es neutro, no es un logro. */
+/* Va PEGADO a la palabra —4 px de aire— y no a media distancia entre el
+   cintillo y ella. Con 12 px por debajo, el filete flotaba justo bajo
+   «Informe automatizado» y se leía como el subrayado del cintillo: coronaba
+   el rótulo equivocado. Adentro de la tarjeta, y a 4 px, corona lo que
+   tiene que coronar.
+
+   Va en el color PLENO de la marca (magenta y ámbar sin mezclar) y no en el
+   tono de texto: es una viñeta decorativa de medida fija, que es
+   exactamente el uso que la guía le autoriza al ámbar puro. Lo que no puede
+   hacer —y no hace— es codificar una cantidad con su largo. */
+.u-rule {
+  display: block;
+  width: 44px; height: 4px;
+  margin-bottom: var(--s-1);
+  border-radius: var(--r-pill);
+  background: var(--ink-3);
+  transition: background .18s var(--ease);
+}
+.u-rule.urgency-high       { background: var(--kb-magenta); }
+.u-rule.urgency-medium     { background: var(--kb-amber); }
+.u-rule.urgency-borderline { background: var(--kb-amber); opacity: .55; }
+.u-rule.urgency-low,
+.u-rule.is-neutral         { background: var(--kb-violet-300); }
+
+/* En una línea de metadatos va EN LÍNEA con el texto, sin el margen que usa
+   cuando corona el veredicto.
+
+   `align-self` y no `vertical-align`: `.meta-line` es un contenedor FLEX, y
+   ahí `vertical-align` no hace nada y `display: inline-block` se blockifica
+   igual. Estaba escrito con los dos y medía lo mismo que sin ellos: el
+   filete quedaba pegado al techo de la fila, con su centro en y=98 contra
+   el centro de la palabra en y=107. Nueve píxeles de desalineación en el
+   objeto que corona el veredicto del estudio. */
+.meta-line .u-rule {
+  margin-bottom: 0;
+  align-self: center;
+  flex-shrink: 0;
+}
+
+/* ─── 34.c La línea de alcance: UNA sola, permanente ──────────────────
+   «Confirmar con lectura médica» es una de las cuatro cosas que tienen que
+   estar legibles en el CUADRO CERO. Era una línea suelta con un ícono
+   ámbar, del mismo peso que cualquier nota al pie. Pasa a ser un bloque
+   con fondo ámbar y filete vertical: sigue sin gritar —no compite con el
+   veredicto— pero ya no se puede pasar de largo. */
+/* La forma es la del error de KIBBO —franja izquierda de 3 px, fondo
+   tintado y un ícono que está siempre—, que la guía define para señalar sin
+   recurrir al matiz. Acá el matiz además está: la salvedad es ámbar porque
+   es una advertencia, no un error.
+
+   El radio ya no es 0 del lado de la franja. Ese cero venía de cuando la
+   hoja no tenía un solo radio generoso; con la franja redondeada del mismo
+   lado, el bloque deja de parecer recortado contra el canto de la tarjeta. */
+.scope-line {
+  display: flex; align-items: flex-start; gap: var(--s-3);
+  margin-top: var(--s-6);
+  padding: var(--s-4);
+  background: var(--caution-soft);
+  border-left: 3px solid var(--kb-amber);
+  border-radius: var(--r-md);
+  font-size: var(--fs-small);
+  color: var(--caution-ink);
+  line-height: 1.5;
+}
+.scope-line svg { width: 18px; height: 18px; color: var(--caution); margin-top: 1px; }
+.scope-line strong { color: var(--ink); font-weight: 600; }
+
+/* ─── 34.e La franja de veredicto del visor ─────────────────────────────
+   Sólo existe en una columna (ver sección 31), donde el panel de lectura
+   cae bajo el pliegue. Es el mismo veredicto, comprimido a una línea y
+   fijo al tope del panel de imagen.
+
+   Va como chrome del visor, ENTRE la barra y la ventana: nunca encima de
+   la anatomía, igual que el sobreimpreso de las esquinas. */
+.verdict-strip {
+  display: none;                 /* la enciende el breakpoint angosto */
+  padding: var(--s-2) var(--s-4);
+  background: var(--chrome);
+  border-left: 3px solid var(--rule-2);
+  border-radius: 0;
+  flex-shrink: 0;
+}
+/* Primer renglón: lo que decide el triage, en una línea. */
+.vs-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+.verdict-strip[hidden] { display: none; }
+.verdict-strip.urgency-high       { border-left-color: var(--finding); }
+.verdict-strip.urgency-medium     { border-left-color: var(--caution); }
+.verdict-strip.urgency-borderline { border-left-color: var(--caution); }
+.verdict-strip.urgency-low        { border-left-color: var(--rule-2); }
+
+/* La escalera acá va en línea, más corta, sin margen inferior. */
+.verdict-strip .u-rule { width: 34px; margin-bottom: 0; flex-shrink: 0; }
+
+.vs-word {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -.03em;
+  text-transform: uppercase;
+  color: var(--ink);
+  white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.verdict-strip.urgency-high   .vs-word { color: var(--finding); }
+.verdict-strip.urgency-medium .vs-word { color: var(--caution); }
+
+/* SEGUNDO RENGLÓN: LA SALVEDAD, en el cuadro cero del teléfono.
+   Sin esto la franja resolvía dos de las cuatro piezas obligatorias
+   —veredicto y probabilidad— y las otras dos quedaban a 300 px bajo el
+   pliegue: se podía leer «REVISAR 78 %» y decidir sin haber visto nunca
+   «confirmar con lectura médica».
+
+   Es la salvedad, no una segunda voz: no lleva fondo ámbar como
+   `.scope-line` —que es el bloque titular en el panel— sino un filete
+   superior y la tinta de la reserva clínica. El ÍCONO es el mismo de
+   `.scope-line`, que es la marca por la que se reconoce la reserva sin
+   depender del color (regla de color, tercer uso del ámbar).
+
+   11 px es el piso de metadatos de la hoja y acá se justifica: la frase
+   completa está en el panel a 13 px, ésta es su repetición visual sobre un
+   pliegue de 667 y compite con la placa por cada píxel. Interlínea 1,45
+   para que en dos renglones no se empaste. */
+.vs-caveat {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  margin: var(--s-2) 0 0;
+  padding-top: var(--s-2);
+  border-top: 1px solid var(--rule);
+  font-size: var(--fs-micro);
+  line-height: 1.45;
+  color: var(--caution-ink);
+}
+.vs-caveat-i {
+  width: 13px; height: 13px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--caution);
+}
+.vs-caveat strong { font-weight: 600; color: var(--caution-ink); }
+
+/* El encendido va junto al componente, no en la sección 31: una media
+   query no agrega especificidad, y allá arriba quedaría ANTES del
+   `display: none` de acá, así que perdería por orden de cascada.
+   `.verdict-strip[hidden]` (0,2,0) le gana a esto (0,1,0) igual, que es lo
+   que mantiene ocultas las franjas de las imágenes no abiertas.
+   `block` y no `flex`: la franja pasó a tener DOS renglones, y el de
+   arriba es el que reparte en fila (`.vs-row`). */
+@media (max-width: 860px) {
+  .verdict-strip { display: block; }
+}
+
+/* ─── 34.d Hallazgos: lista interactiva ligada a la placa ───────────── */
+/* La segunda tarjeta del panel, y deliberadamente un escalón por debajo de
+   la del triage: radio 20 contra 28, sombra media contra XL. Ésa es la
+   jerarquía que KIBBO le pide a una card base frente a la destacada. */
+.finds {
+  margin-top: var(--s-5);
+  background: var(--chrome);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-md);
+  padding: var(--s-6);
+}
+
+/* El chip del recuento baja a su propio renglón antes que dejar que el
+   título se parta en dos. */
+.find-head {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-3);
+}
+/* «Zonas marcadas» es un encabezado de sección de verdad, no un rótulo
+   chico: abre la mitad de abajo del informe. Va en Montserrat, que es lo
+   que KIBBO destina a los títulos. */
+.finds-title {
+  font-family: var(--display);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  letter-spacing: -.01em;
+  line-height: 1.25;
+  color: var(--ink);
+}
+/* El recuento pasa a ser un chip, que es la forma que KIBBO le da a un
+   metadato corto: píldora, 24 px de alto, registro técnico. */
+.find-count {
+  display: inline-flex; align-items: center; gap: 5px;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: var(--r-pill);
+  background: var(--kb-violet-50);
+  border: 1px solid var(--accent-line);
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.find-count .num {
+  color: var(--accent);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums slashed-zero;
+}
+
+/* EL RÓTULO DE UNIDAD. Siempre visible: es lo que impide leer estas filas
+   como una probabilidad de fractura, que es exactamente lo que el
+   trabajo no afirma. Es regla de cuadro cero y no se pliega.
+
+   Deja de ser un párrafo suelto entre el título y los datos —cuatro
+   renglones de prosa con negritas salteadas, el bloque más denso de la
+   columna— y pasa a ser APARATO: un bloque tintado, con su propio canto,
+   que se lee como la leyenda de un instrumento y no como texto corrido. No
+   se le sacó ni una palabra: cambió de registro, no de contenido. */
+.find-unit {
+  margin: var(--s-4) 0;
+  padding: var(--s-3) var(--s-4);
+  background: var(--kb-violet-50);
+  border-radius: var(--r-md);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.find-unit strong { font-weight: 600; color: var(--ink); }
+.find-unit .num { color: var(--ink); font-weight: 500; }
+
+.find-list { display: flex; flex-direction: column; gap: 2px; }
+
+/* La fila es un <button> de verdad: el Tab la alcanza y Enter la activa.
+   Orden de lectura: NÚMERO · SCORE · BARRA. El score va antes que la barra
+   porque el dato es el número; la barra es la comparación contra el umbral,
+   y una comparación se lee después de lo que compara. */
+.find {
+  display: grid;
+  grid-template-columns: 26px auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  min-height: 40px;
+  padding: var(--s-2) var(--s-3);
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-md);
+  color: var(--ink-2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: inset 3px 0 0 transparent;
+  transition: background .15s var(--ease), box-shadow .15s var(--ease),
+              color .15s var(--ease);
+}
+/* Rozar con el puntero y FIJAR son dos cosas distintas, y se ven distinto:
+   el roce apenas tiñe —y tiñe de violeta, que es interacción—, la fila
+   fijada se tiñe del color DEL HALLAZGO y suma un filete vertical.
+
+   Que el roce sea violeta y la fijación magenta o ámbar no es un descuido:
+   son los dos ejes de esta hoja. El violeta dice DÓNDE ESTÁS, el magenta y
+   el ámbar dicen QUÉ ENCONTRÓ. Nunca se pisan. */
+.find:hover,
+.find.is-hot {
+  background: var(--kb-violet-50);
+  color: var(--ink);
+}
+.find[aria-pressed="true"] {
+  background: var(--finding-tint);
+  box-shadow: inset 3px 0 0 var(--kb-magenta);
+  color: var(--ink);
+}
+.find.is-low[aria-pressed="true"] {
+  background: var(--caution-soft);
+  box-shadow: inset 3px 0 0 var(--kb-amber);
+}
+
+.find-n {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  text-align: right;
+}
+.find.is-hot .find-n { color: var(--ink); }
+.find[aria-pressed="true"] .find-n { color: var(--finding); font-weight: 600; }
+.find.is-low[aria-pressed="true"] .find-n { color: var(--caution); }
+
+.find-v {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+  font-size: var(--fs-base);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+/* La barra, con LA MARCA DEL UMBRAL.
+   Esto reemplaza a una columna «Estado» que repetía en versalitas, tres
+   veces y partido en dos renglones, lo que la barra ya dice sola: estar a
+   la derecha de la marca ES estar sobre el corte de aviso. `--u` lo pone la
+   plantilla desde ABNORMAL_THRESHOLD; acá no hay ningún número escrito a
+   mano.
+
+   El relleno usa los tokens de RELLENO y no los de texto: es un objeto
+   gráfico y le debe 3:1 a su pista, no 4,5:1. El magenta pleno mide 3,48
+   sobre la hoja y el ámbar con 30 % de tinta, 3,06. */
+.find-meter {
+  position: relative;
+  height: 8px;
+  border-radius: var(--r-pill);
+  background: var(--kb-violet-100);
+  overflow: hidden;
+}
+.find-fill {
+  display: block; height: 100%;
+  width: var(--w);
+  border-radius: var(--r-pill);
+  background: var(--fill-finding);
+  transform-origin: left center;
+}
+.find.is-low .find-fill { background: var(--fill-caution); }
+/* La marca del corte cruza la pista entera y sobresale arriba y abajo, así
+   que no puede quedar recortada por el `overflow` de la píldora: vive
+   fuera, en el contenedor de la fila. */
+.find-cut {
+  position: absolute; top: -3px; bottom: -3px;
+  left: var(--u, 25%);
+  width: 2px;
+  margin-left: -1px;
+  border-radius: var(--r-pill);
+  background: var(--ink-2);
+  z-index: 2;
+}
+
+.find-empty {
+  font-size: var(--fs-small);
+  color: var(--ink-2);
+  padding: var(--s-3) var(--s-4);
+  background: var(--kb-violet-50);
+  border-radius: var(--r-md);
+  line-height: 1.5;
+}
+.find-hint {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: var(--s-2);
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  margin-top: var(--s-4);
+  margin-bottom: 0;
+}
+/* Una tecla se dibuja como una tecla: rectángulo redondeado, no píldora.
+   Con radio pill una tecla de un solo carácter salía redonda. */
+.find-hint kbd {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+  font-size: var(--fs-xs);
+  min-width: 22px;
+  display: inline-block;
+  text-align: center;
+  background: var(--kb-violet-50);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-sm);
+  padding: 2px 7px;
+  color: var(--ink-2);
+}
+
+/* ─── 34.e Plegables silenciosos ──────────────────────────────────────
+   TODOS LOS FILETES HORIZONTALES DE ESTA COLUMNA SE FUERON MENOS UNO.
+   Cada plegable llevaba el suyo, más el <hr> del triage, más el del pie:
+   siete reglas de 1 px apilando cajas invisibles. Queda el que ABRE el
+   grupo —marca dónde termina la lectura y empieza lo plegado— y el resto
+   agrupa por aire. */
+.quiet, .scope { border: 0; }
+
+/* Lo plegado NO lleva tarjeta, y eso es la jerarquía: arriba dos tarjetas
+   blancas con sombra —lo que se lee de guardia—, abajo filas calladas
+   apoyadas en la hoja. El filete que abre el grupo sigue siendo el único
+   horizontal de la columna. */
+.readout > details:first-of-type,
+.panel-img > details:first-of-type {
+  border-top: 1px solid var(--rule);
+  margin-top: var(--s-6);
+  padding-top: var(--s-3);
+}
+
+.quiet > summary,
+.scope > summary {
+  display: flex; align-items: center; gap: var(--s-3);
+  min-height: 40px;
+  padding: 0 var(--s-3);
+  margin: 0 calc(-1 * var(--s-3));
+  border-radius: var(--r-md);
+  font-size: var(--fs-base);
+  font-weight: 500;
+  color: var(--ink);
+  cursor: pointer;
+  list-style: none;
+  transition: color .15s var(--ease), background .15s var(--ease);
+}
+.quiet > summary::-webkit-details-marker,
+.scope > summary::-webkit-details-marker { display: none; }
+.quiet > summary:hover,
+.scope > summary:hover { color: var(--accent); background: var(--kb-violet-50); }
+.quiet > summary .chev,
+.scope > summary .chev {
+  width: 12px; height: 12px;
+  color: var(--ink-3);
+  transition: transform .18s var(--ease);
+}
+.quiet[open] > summary .chev,
+.scope[open] > summary .chev { transform: rotate(90deg); }
+.quiet-body { padding: var(--s-1) 0 var(--s-4) var(--s-6); }
+
+/* El resumen de cada plegable, alineado a la derecha: dice QUÉ HAY ADENTRO
+   sin obligar a abrirlo. Los tres valores son derivados —recall y ECE
+   salen de MODEL_METADATA, el estado de la opinión sale de la base— así
+   que ningún número está escrito a mano. */
+.fold-m {
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.fold-m .num { color: var(--ink-2); }
+
+/* Alcance clínico: mismo plegable, con el ícono de información — es el que
+   guarda las salvedades, no un detalle de ingeniería.
+
+   El RÓTULO vuelve al color de sus hermanos. Estaba en ámbar «para que se
+   distinga del resto del grupo», que es exactamente el uso que la regla de
+   color prohíbe: ahí el ámbar no decía «reserva clínica», decía «mirá
+   éste» — diferenciación dentro de una lista, no semántica. El eje lo
+   sigue portando el ÍCONO, que es el mismo de `.scope-line`: los dos
+   lugares donde vive la salvedad se reconocen por la misma marca. */
+.scope > summary:hover { color: var(--ink); }
+.scope-i { width: 15px; height: 15px; color: var(--caution); }
+.scope-body { padding: var(--s-1) 0 var(--s-4) var(--s-6); }
+
+.scope-list { display: flex; flex-direction: column; gap: var(--s-4); }
+.scope-list dt {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: .005em;
+  color: var(--ink);
+  margin-bottom: 2px;
+}
+.scope-list dd {
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  line-height: 1.55;
+  margin: 0;
+}
+/* ─── 34.f Aviso de dominio: la única banda que sigue siendo permanente
+   ---------------------------------------------------------------------
+   Un registro fuera del dominio validado no es una salvedad de rutina: es
+   que lo que se ve en pantalla se generó con un modelo retirado. Eso no se
+   pliega. Todo lo demás sí. */
+.domain-flag {
+  display: flex; align-items: flex-start; gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  margin-bottom: var(--s-5);
+  background: var(--caution-soft);
+  border-left: 3px solid var(--caution);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  font-size: var(--fs-sm);
+  color: var(--caution-ink);
+  line-height: 1.5;
+}
+.domain-flag svg { width: 16px; height: 16px; color: var(--caution); margin-top: 2px; }
+.domain-flag strong { color: var(--caution-ink); font-weight: 600; }
+.domain-flag code { background: transparent; padding: 0; color: inherit; font-weight: 600; }
+
+/* ─── 34.g Barra de acciones al pie del panel ─────────────────────────
+   Sin filete arriba: las acciones ya están separadas del informe por todo
+   el aire que sobra en la columna. `margin-top:auto` las ancla al pie
+   cuando ese aire existe, y las deja fluir con el contenido cuando no. */
+/* PEGADAS AL PIE DEL PANEL, siempre.
+   `margin-top:auto` sólo las ancla cuando SOBRA alto. Con el plegable de
+   opinión abierto —que es el estado por defecto cuando todavía no hay una
+   opinión registrada— el informe pasa a medir más que la columna, y
+   «Descargar PDF» quedaba 255 px por debajo del pliegue: la acción
+   principal de la pantalla, invisible.
+
+   `sticky` resuelve las dos situaciones con una sola regla: cuando sobra
+   alto las empuja `margin-top:auto` y cuando falta las clava el sticky. El
+   fondo es obligatorio — sin él, el informe se ve pasar por debajo. */
+.rd-actions {
+  display: flex; gap: var(--s-2); flex-wrap: wrap; align-items: center;
+  position: sticky;
+  bottom: 0;
+  margin-top: auto;
+  padding-top: var(--s-4);
+  padding-bottom: var(--s-5);
+  background: var(--ground);
+}
+/* Una insinuación de que hay informe por encima, sólo mientras el panel
+   está efectivamente desplazado. */
+.rd-actions::before {
+  content: '';
+  position: absolute; left: 0; right: 0; top: 0;
+  height: var(--s-8);
+  transform: translateY(-100%);
+  background: linear-gradient(to top, var(--ground), rgba(245,244,251,0));
+  pointer-events: none;
+}
+
+/* EL DESPEGADO EN UNA COLUMNA — va acá, pegado al componente, y no en el
+   bloque de 860 de más arriba.
+   El `sticky` resuelve un problema de COLUMNA CON SCROLL PROPIO: la acción
+   principal cayendo bajo el pliegue del panel. En una sola columna el panel
+   ya no tiene scroll propio —lo tiene la página entera— y el `sticky` sólo
+   logra que los botones viajen encima del informe todo el recorrido,
+   tapando los campos de la opinión profesional. Vuelven a ser el último
+   bloque del documento, que es lo que son.
+
+   Una media query NO agrega especificidad: puesta antes de la regla de
+   arriba, ésta le gana por orden de cascada y el override no existe. Es la
+   misma trampa que ya se había evitado a propósito para `.verdict-strip`. */
+@media (max-width: 860px) {
+  .rd-actions { position: static; padding-bottom: 0; }
+  .rd-actions::before { display: none; }
+}
+
+/* A LA ALTURA DEL PROYECTOR el pegado se suelta también en dos columnas.
+   El `sticky` está pensado para 1440, donde la columna tiene alto de sobra.
+   A 1024x768 la columna mide 768 menos membrete, barra y márgenes: la barra
+   se apoyaba a y=530 con su velo empezando en y=498, y el ÚNICO hallazgo
+   del estudio —la fila `01 0,420`— caía en y≈498-520. En la resolución en
+   la que esto se defiende, el hallazgo que el sistema encontró no se leía.
+   Sin alto, un pegajoso no gana lugar: lo saca. */
+@media (max-height: 820px) and (min-width: 861px) {
+  .rd-actions { position: static; padding-bottom: 0; }
+  .rd-actions::before { display: none; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   35. LA PLACA: CAJAS VECTORIALES, CORTINA Y VENTANA
+   ----------------------------------------------------------------------
+   Las cajas dejaron de estar quemadas en el PNG. Las mismas coordenadas,
+   ya guardadas en la base, se dibujan como SVG encima de la placa limpia:
+   se pueden encender de a una desde el panel, no engordan con el zoom, y
+   la anatomía deja de tener texto rojo encima.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* La cadena de filtros de la placa es una sola: inversión de grises y
+   ventana conviven en vez de pisarse. */
+.stage-img {
+  filter: invert(var(--img-inv, 0)) brightness(var(--img-br, 1)) contrast(var(--img-ct, 1));
+}
+.reader.is-inverted { --img-inv: 1; }
+.stage.is-inverted .stage-img { filter: none; }  /* la regla vieja ya no aplica */
+
+/* Capa quemada del servidor: se apaga sólo cuando los vectores están
+   efectivamente dibujados. */
+.stage-img.is-off { visibility: hidden; }
+
+.boxlayer {
+  position: absolute;
+  top: 0; left: 0;
+  transform-origin: 0 0;
+  overflow: visible;
+  z-index: 2;
+  pointer-events: none;
+  will-change: transform;
+  /* El SVG lleva `width`/`height` en píxeles de la IMAGEN (viewer.js le
+     pone el naturalWidth/naturalHeight de la placa) y se escala con el
+     mismo `transform` que la placa. La regla global de §3
+     (`img, svg, canvas { max-width: 100% }`) exceptuaba a `.stage-img` y
+     se había olvidado de esta capa: con una placa más ancha que el panel,
+     el SVG se achicaba al ancho del panel y `xMidYMid meet` comprimía y
+     centraba las cajas — hasta 757 px de corrimiento sobre 1568.
+     Auditoría 2026-09-01, hallazgo C1. Las cajas NUNCA estuvieron mal en
+     el modelo ni en la base: fallaba sólo esta línea. */
+  max-width: none;
+  max-height: none;
+}
+.boxlayer.is-off { visibility: hidden; }
+
+/* OJO — ACÁ NO VALEN LOS COLORES DE LA HOJA.
+   `--finding` es #AA1E28, un carmín calculado para leerse sobre gris
+   claro. Sobre la placa negra ese trazo desaparece, y es justamente el
+   trazo que encierra una fractura. Las cajas usan el juego de la placa
+   (§2, bloque DENTRO DE LA PLACA), medido contra negro. */
+.bx rect {
+  fill: transparent;
+  stroke: var(--plate-finding);
+  stroke-width: 1.7;
+  /* Cada caja recibe el puntero para poder resaltarse desde la placa; el
+     arrastre sigue funcionando porque el evento burbujea a la ventana. */
+  pointer-events: all;
+  transition: stroke .15s var(--ease), stroke-width .15s var(--ease);
+}
+.bx-low rect { stroke: var(--plate-caution); stroke-dasharray: 6 4; }
+
+/* Los números ya no cuelgan del grupo de su caja: van en una capa propia
+   por encima de todos los trazos, para que ninguna caja tape un número
+   (ver armarVectores en viewer.js). Por eso `.bx-tag.bx-low` y no
+   `.bx-low .bx-tag`: la clase de estado la lleva el número mismo. */
+.bx-tag rect {
+  fill: var(--plate-finding);
+  stroke: none;
+  /* La capa entera es `pointer-events: none` y cada caja se lo devuelve a su
+     rectángulo. El número necesita lo mismo: es parte de la misma caja para
+     el ojo, tiene que serlo para el puntero. Sin esto, el número quedaba
+     como una zona muerta encima de la placa. */
+  pointer-events: all;
+}
+.bx-tag.bx-low rect { fill: var(--plate-caution); }
+.bx-tag text {
+  /* Negro sobre el rojo de la placa: 6,42:1. El gris carbón de antes
+     estaba pensado para un tema oscuro y sobre #FF4D4D no llegaba. */
+  fill: var(--plate-ink);
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+/* Cuando hay uno resaltado, los demás bajan la voz. Es dirección de la
+   atención: el médico señaló una fila, la placa le contesta cuál es.
+   Alcanza al número además del trazo: viven en capas distintas y si no se
+   nombran las dos, los números de las cajas apagadas quedaban encendidos. */
+.boxlayer.has-hot .bx,
+.boxlayer.has-hot .bx-tag { opacity: .32; }
+.boxlayer.has-hot .bx.is-hot,
+.boxlayer.has-hot .bx-tag.is-hot { opacity: 1; }
+.bx.is-hot rect {
+  stroke-width: 2.6;
+  filter: drop-shadow(0 0 6px rgba(236,79,188,.6));
+}
+.bx-low.is-hot rect { filter: drop-shadow(0 0 6px rgba(247,181,0,.55)); }
+
+/* ─── 35.b Cortina de comparación ───────────────────────────────────── */
+/* A la izquierda del corte, la placa como salió del equipo. A la derecha,
+   lo que marcó el sistema. */
+/* --clip va en coordenadas de la IMAGEN (lo calcula viewer.js a partir de la
+   posición del tirador en pantalla). --corte, en coordenadas de pantalla, es
+   sólo para el tirador. */
+.reader.is-comparing .boxlayer { clip-path: inset(0 0 0 var(--clip, 50%)); }
+.reader.is-comparing .stage-img-top:not(.is-off) { clip-path: inset(0 0 0 var(--clip, 50%)); }
+
+.curtain {
+  position: absolute;
+  top: 0; bottom: 0;
+  left: var(--corte, 50%);
+  width: 2px;
+  margin-left: -1px;
+  z-index: 4;
+  background: rgba(245,244,251,.8);
+  cursor: ew-resize;
+  touch-action: none;
+}
+.curtain::before {
+  /* Zona de agarre ancha: 2 px de línea no se toman con el dedo. */
+  content: ''; position: absolute;
+  top: 0; bottom: 0; left: -14px; right: -14px;
+}
+.curtain-grip {
+  position: absolute; top: 50%; left: 50%;
+  width: 30px; height: 30px;
+  margin: -15px 0 0 -15px;
+  border-radius: 50%;
+  background: var(--chrome);
+  border: 1px solid var(--rule-2);
+  box-shadow: 0 2px 10px rgba(8,4,23,.55);
+  transition: transform .16s var(--ease), border-color .16s var(--ease);
+}
+.curtain-grip::before,
+.curtain-grip::after {
+  content: ''; position: absolute; top: 50%;
+  width: 0; height: 0;
+  margin-top: -4px;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+}
+.curtain-grip::before { left: 6px;  border-right: 5px solid var(--text-2); }
+.curtain-grip::after  { right: 6px; border-left: 5px solid var(--text-2); }
+/* En una pantalla táctil el `hover` se dispara con el toque y el tirador
+   queda agrandado después de soltarlo. Se lo reserva al puntero fino. */
+@media (hover: hover) and (pointer: fine) {
+  .curtain:hover .curtain-grip { transform: scale(1.08); border-color: var(--text-3); }
+}
+/* Agarrado: el tirador se hunde bajo el dedo. Es el acuse de que la cortina
+   quedó tomada — sin esto, arrastrar y fallar el agarre se ven igual. */
+.curtain.is-grabbed .curtain-grip { transform: scale(.94); border-color: var(--accent); }
+.curtain:focus-visible { outline: none; }
+.curtain:focus-visible .curtain-grip { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+
+.curtain-side {
+  position: absolute; top: var(--s-3);
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+  font-size: var(--fs-micro);
+  color: var(--ov-key);
+}
+
+/* ─── 35.c Ventana: brillo y contraste ──────────────────────────────── */
+.tool-pop { position: relative; display: inline-flex; }
+.tool-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  width: 210px;
+  padding: var(--s-4);
+  background: var(--surface-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+  display: flex; flex-direction: column; gap: var(--s-4);
+}
+.tool-slider { display: flex; flex-direction: column; gap: var(--s-2); }
+.tool-slider > span {
+  display: flex; justify-content: space-between;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+}
+.tool-slider output { font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1; color: var(--text-3); }
+.tool-slider input[type=range] {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 20px;
+  background: transparent;
+  cursor: pointer;
+}
+.tool-slider input[type=range]::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 2px; background: var(--surface-4);
+}
+.tool-slider input[type=range]::-moz-range-track {
+  height: 4px; border-radius: 2px; background: var(--surface-4);
+}
+.tool-slider input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 14px; height: 14px; margin-top: -5px;
+  border-radius: 50%; border: 0;
+  background: var(--text-2);
+  transition: background .15s var(--ease);
+}
+.tool-slider input[type=range]::-moz-range-thumb {
+  width: 14px; height: 14px;
+  border-radius: 50%; border: 0;
+  background: var(--text-2);
+}
+.tool-slider input[type=range]:hover::-webkit-slider-thumb { background: var(--accent-2); }
+.tool-slider input[type=range]:hover::-moz-range-thumb { background: var(--accent-2); }
+
+/* ─── 35.d Movimiento de los componentes nuevos ─────────────────────── */
+/* Rápido, corto y con propósito: acuse de recibo, nunca decoración.
+   Ni el dato de triage ni NINGUNA MAGNITUD se animan en su largo.
+
+   UNA MEDICIÓN NO SE EXTIENDE: ES.
+   Estas barras salían de `scaleX(0)`. Durante 420 ms el relleno del medidor
+   barría de 0 % a 78 % al lado de un número que ya decía 78 %: la geometría
+   afirmaba 62, 70, 75 mientras el número afirmaba 78. Son 25 cuadros en los
+   que la interfaz muestra una probabilidad de fractura que el sistema no
+   calculó, y alcanza un solo cuadro grabado para impugnarlo.
+
+   La regla, sin excepciones: QUE ATERRICE, NO QUE RECORRA. El largo es el
+   medido desde el cuadro cero y lo único que entra es la OPACIDAD.
+   Tampoco vale una máscara que barra de izquierda a derecha: sobre una
+   barra maciza da los mismos píxeles que `scaleX`, y por lo tanto los
+   mismos 25 cuadros falsos. Lo que no puede moverse es el BORDE que marca
+   el valor. */
+/* DÓNDE SE CUELGA EL FUNDIDO, Y POR QUÉ NO EN EL RELLENO.
+   El fundido lo lleva la PISTA (`.find-meter`), nunca el
+   relleno que mide. Visualmente da lo mismo —el relleno vive dentro de la
+   pista y hereda su opacidad—, pero la diferencia importa cuando alguien
+   audita: sobre el relleno, `getComputedStyle(...).animationName` devuelve
+   un nombre, y el que mide tiene que ir a leer los keyframes para
+   convencerse de que sólo tocan `opacity`. Colgado de la pista, el objeto
+   que porta la magnitud contesta `none` y no hay nada que interpretar.
+
+   El objeto que aterriza es la barra ENTERA —pista y relleno juntos— que
+   además es lo correcto: no es media barra que aparece sobre una pista ya
+   dibujada, es una medición que se posa completa. */
+@media (prefers-reduced-motion: no-preference) {
+  /* La barra de cada hallazgo ES su confianza: aparece a su largo medido. */
+  .find-meter { animation: fill-land .38s var(--ease) backwards; }
+  .find-list .find:nth-child(1) .find-meter { animation-delay: .04s; }
+  .find-list .find:nth-child(2) .find-meter { animation-delay: .09s; }
+  .find-list .find:nth-child(3) .find-meter { animation-delay: .14s; }
+  .find-list .find:nth-child(n+4) .find-meter { animation-delay: .18s; }
+
+  .find:active { transform: scale(.99); }
+  .tool:active { transform: scale(.93); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .find-meter { animation: none !important; }
+  .curtain-grip { transition: none !important; }
+}
+
+/* ─── 34.h Barras de desplazamiento ─────────────────────────────────── */
+/* La barra clara y ancha del sistema era lo más brillante de la pantalla,
+   al lado de una placa. Se hace fina y del color de la interfaz. */
+.readout, .filmstrip, .table-wrap, .tool-panel {
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-4) transparent;
+}
+.readout::-webkit-scrollbar,
+.filmstrip::-webkit-scrollbar,
+.table-wrap::-webkit-scrollbar { width: 8px; height: 8px; }
+.readout::-webkit-scrollbar-track,
+.filmstrip::-webkit-scrollbar-track,
+.table-wrap::-webkit-scrollbar-track { background: transparent; }
+.readout::-webkit-scrollbar-thumb,
+.filmstrip::-webkit-scrollbar-thumb,
+.table-wrap::-webkit-scrollbar-thumb {
+  background: var(--surface-4);
+  border-radius: var(--r-pill);
+}
+.readout::-webkit-scrollbar-thumb:hover,
+.filmstrip::-webkit-scrollbar-thumb:hover,
+.table-wrap::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   36. ESTUDIO MULTI-IMAGEN
+   ----------------------------------------------------------------------
+   Tres números sueltos ("12 imágenes · 3 con hallazgos · 9 sin hallazgos")
+   obligan a hacer la cuenta. Una barra de proporción la muestra hecha: qué
+   parte del estudio quedó marcada se lee sin leer.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.study-tally { min-width: 260px; flex: 0 1 320px; }
+
+/* Pista de proporción: píldora y tinte violeta, como todas las pistas de
+   esta hoja. El canto vivo de 1 px era el rasgo de instrumento que la marca
+   retira. */
+.tally-bar {
+  height: 8px;
+  border-radius: var(--r-pill);
+  background: var(--kb-violet-100);
+  overflow: hidden;
+}
+.tally-fill {
+  display: block; height: 100%;
+  width: var(--w);
+  border-radius: inherit;
+  background: var(--finding);
+  transform-origin: left center;
+}
+
+.tally-keys {
+  display: flex; flex-wrap: wrap; gap: var(--s-4);
+  margin-top: var(--s-2);
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+.tally-key { display: flex; align-items: center; gap: 5px; }
+.tally-key strong {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+  font-weight: 500;
+  color: var(--ink);
+}
+.tally-key.is-finding::before {
+  content: ''; width: 8px; height: 8px; border-radius: 2px;
+  background: var(--finding);
+}
+.tally-key.is-finding strong { color: var(--finding); }
+.tally-total { margin-left: auto; }
+
+/* El panel de cada imagen usa la misma gramática que el análisis simple. */
+.panel-img { display: flex; flex-direction: column; }
+.panel-img + .panel-img { margin-top: 0; }
+.readout > .seg { margin-bottom: var(--s-5); }
+
+.study-alerts { padding: var(--s-3) var(--s-6); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   37. MÉTRICAS: AIRE
+   ----------------------------------------------------------------------
+   Los gráficos ya leían los tokens del sistema, así que no había azul de
+   fábrica en ningún lado. Lo que faltaba era respirar: las tarjetas se
+   tocaban entre sí (12 px de separación), los números vivían pegados al
+   borde y las secciones no se distinguían una de otra.
+
+   Se ajusta el ritmo, no la estructura. Estas reglas van después de la
+   sección 23 y la sobreescriben a propósito.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.stat-grid {
+  gap: var(--s-4);
+  margin-bottom: 0;
+}
+.stat {
+  padding: var(--s-5) var(--s-5) var(--s-6);
+  /* El borde marcado convertía la grilla en una reja. La tarjeta se sostiene
+     con su superficie; el borde queda como un canto, no como un marco. */
+  border-color: var(--line);
+  background: var(--surface-1);
+  display: flex;
+  flex-direction: column;
+}
+.stat-value {
+  font-size: var(--fs-3xl);
+  letter-spacing: -.035em;
+}
+.stat-value .prob-unit {
+  font-size: .46em;
+  color: var(--text-3);
+  margin-left: 2px;
+}
+.stat-label { margin-top: var(--s-3); }
+.stat-note {
+  margin-top: var(--s-3);
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--line);
+  line-height: 1.55;
+  color: var(--text-3);
+}
+
+/* ─── Banda de cifras: números grandes sobre reglas de 1 px ────────────
+   La alternativa a la grilla de tarjetas. Una tarjeta sólo se gana su
+   caja cuando la elevación dice algo; ocho cajas idénticas en fila no
+   dicen nada, y el ojo pasa a contar rectángulos en vez de leer cifras.
+   Acá cada figura se apoya en una regla y la separa el aire, que es como
+   ya lee la pantalla de métricas.
+
+   `auto-fit` con un mínimo generoso: las columnas se reacomodan solas y
+   ninguna cifra queda en una caja tan angosta que tenga que partirse. */
+.figs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  column-gap: var(--s-8);
+  row-gap: var(--s-6);
+}
+.fig {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--line-2);
+  min-width: 0;
+}
+.fig-v {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+  font-size: var(--fs-2xl);
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -.03em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.fig-v.is-empty { font-size: var(--fs-lg); color: var(--text-3); }
+.fig-v .prob-unit { font-size: .46em; color: var(--text-3); margin-left: 2px; }
+.fig-l {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--ink-2);
+  letter-spacing: .005em;
+}
+.fig-n {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  line-height: 1.45;
+}
+.fig-n:empty { display: none; }
+
+/* Separación entre secciones: un rótulo pegado a la grilla anterior no
+   separa nada. */
+.metrics-section { margin-top: var(--s-12); }
+.metrics-section:first-of-type { margin-top: var(--s-8); }
+.metrics-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--s-4); flex-wrap: wrap;
+  margin-bottom: var(--s-4);
+  padding-bottom: var(--s-3);
+  border-bottom: 1px solid var(--line);
+}
+.metrics-head .eyebrow { letter-spacing: .11em; }
+.metrics-head-note {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+}
+
+.charts-grid { gap: var(--s-4); }
+.chart-card { padding: var(--s-6); }
+.chart-card h3 { margin-bottom: var(--s-5); }
+.chart-box { height: 260px; }
+.chart-empty { height: 260px; }
+
+/* La procedencia de las métricas: es una nota al pie, no un párrafo del
+   mismo peso que los números. */
+.metrics-source {
+  margin-top: var(--s-4);
+  padding-left: var(--s-4);
+  border-left: 2px solid var(--line-2);
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+  line-height: 1.6;
+  max-width: 88ch;
+}
+
+@media (max-width: 860px) {
+  .metrics-section { margin-top: var(--s-10); }
+  .chart-card { padding: var(--s-5); }
+  .chart-box, .chart-empty { height: 230px; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   38. MÉTRICAS: LA EVIDENCIA PRIMERO
+   ----------------------------------------------------------------------
+   El dashboard tenía siete tarjetas del mismo peso repartidas en dos
+   secciones que dicen cosas distintas: la evidencia de validación del
+   modelo y el registro de uso de la cuenta. Con el mismo borde, el mismo
+   número mono de 46 px y la misma nota al pie, las dos se leían igual.
+
+   Acá la jerarquía la hacen el TAMAÑO y el AIRE, no más cajas:
+
+     · La evidencia va SIN tarjetas, con título de sección de verdad y
+       separadores finos, exactamente como el panel de lectura del visor.
+     · La actividad va abajo, con rótulo pequeño y tarjetas livianas.
+     · El número más grande de la pantalla es el que menos conviene
+       esconder: cuántas fracturas se le escapan al sistema.
+
+   Los tres párrafos de estadística se convirtieron en geometría; el texto
+   entero sobrevive en el plegable ámbar «Alcance clínico y limitaciones»,
+   el mismo del visor.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─── 38.0 La banda de procedencia ──────────────────────────────────────
+   La única superficie oscura de la app fuera de la placa, y sólo acá: ver
+   el comentario del marcado en dashboard.html. Es SUELO, no acento — el
+   gradiente profundo de KIBBO, el mismo que la guía manda al pie y al campo
+   del hero. No lleva el gradiente firma: el firma marca «esto es lo
+   destacado» y va uno por pantalla; lo destacado de Métricas son los
+   números, no su encabezado. */
+.dash-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-6);
+  align-items: end;
+  padding: var(--s-8);
+  margin-bottom: var(--s-10);
+  border-radius: var(--r-capture);
+  background: var(--kb-grad-deep);
+  box-shadow: var(--sh-lg);
+  color: var(--kb-violet-200);
+}
+@media (min-width: 860px) {
+  .dash-hero { grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--s-10); }
+  .dash-hero-side { text-align: right; align-items: flex-end; }
+}
+.dash-hero-main { min-width: 0; }
+.dash-hero-eyebrow {
+  display: block;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  /* 8,32 sobre el extremo más claro de la banda. La guía destina el 300 de
+     la rampa a «texto e íconos sobre oscuro» y éste es exactamente ese uso. */
+  color: var(--kb-violet-300);
+  margin-bottom: var(--s-3);
+}
+.dash-hero-title {
+  font-family: var(--display);
+  font-size: var(--kb-fs-h1);
+  font-weight: 700;
+  letter-spacing: -.02em;
+  line-height: 1.06;
+  color: var(--kb-bg);
+}
+.dash-hero-sub {
+  margin-top: var(--s-2);
+  font-size: var(--kb-fs-lead);
+  line-height: 1.5;
+  color: var(--kb-violet-200);
+  max-width: 46ch;
+}
+.dash-hero-side { display: flex; flex-direction: column; gap: var(--s-5); min-width: 0; }
+.dash-hero-prov { display: flex; flex-direction: column; gap: var(--s-1); min-width: 0; }
+.dash-hero-model {
+  font-size: var(--fs-small);
+  font-weight: 600;
+  color: var(--kb-bg);
+}
+.dash-hero-desc {
+  font-size: var(--fs-sm);
+  color: var(--kb-violet-300);
+  line-height: 1.5;
+}
+.dash-hero-date {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+  font-size: var(--fs-xs);
+  color: var(--kb-violet-300);
+}
+.dash-hero-actions { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+@media (min-width: 860px) { .dash-hero-actions { justify-content: flex-end; } }
+
+/* ─── 38.a Las secciones de la pantalla ─────────────────────────────
+   Cuatro secciones con el mismo esqueleto: título, bajada, y tarjetas. La
+   jerarquía la hace el ORDEN, no el tamaño — lo propio primero, la
+   evidencia externa después—, así que los cuatro títulos pesan igual. */
+.mx { margin-top: var(--s-16); }
+.mx:first-of-type { margin-top: 0; }
+
+.mx-head {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: var(--s-4); flex-wrap: wrap;
+  margin-bottom: var(--s-5);
+}
+.mx-title {
+  font-family: var(--display);
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  letter-spacing: -.015em;
+  line-height: 1.14;
+  color: var(--text);
+}
+.mx-lead {
+  margin-top: var(--s-2);
+  font-size: var(--fs-base);
+  color: var(--text-2);
+  line-height: 1.5;
+  max-width: 68ch;
+}
+.mx-lead strong { color: var(--ink); font-weight: 600; }
+
+/* LA COBERTURA DE REVISIÓN, al lado del título y no escondida abajo. Una
+   tasa de acuerdo sin ella describe los casos que alguien se tomó el
+   trabajo de revisar, que no son una muestra al azar de la práctica. Va en
+   chip porque es el denominador de todo lo que sigue. */
+.mx-cover {
+  display: inline-flex; align-items: center; gap: 5px;
+  min-height: 28px;
+  padding: 0 var(--s-4);
+  border-radius: var(--r-pill);
+  background: var(--kb-violet-50);
+  border: 1px solid var(--accent-line);
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.mx-cover .num { color: var(--accent); font-weight: 600; }
+
+.mx-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-5);
+}
+@media (min-width: 940px) {
+  .mx-grid    { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; }
+  .mx-grid-2  { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.mx-grid + .mx-grid { margin-top: var(--s-5); }
+
+.mx-card { min-width: 0; }
+.mx-card + .mx-card { margin-top: 0; }
+.mx-note {
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+  line-height: 1.5;
+  margin-top: var(--s-2);
+  max-width: 60ch;
+}
+.mx-note strong { color: var(--ink-2); font-weight: 600; }
+
+/* El estado vacío de la sección de acuerdo. No es un error ni una
+   advertencia: es una instrucción. Por eso va en violeta y no en ámbar. */
+.mx-empty {
+  background: var(--kb-violet-50);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-lg);
+  padding: var(--s-6);
+  display: flex; flex-direction: column; align-items: flex-start;
+  gap: var(--s-3);
+}
+.mx-empty p { color: var(--ink-2); max-width: 62ch; margin: 0; }
+.mx-empty strong { color: var(--ink); }
+
+/* La celda cara del cuadrante, dicha con palabras. Forma de salvedad
+   clínica: franja de 3 px, fondo tintado, ícono que está siempre. */
+.mx-flag {
+  display: flex; align-items: flex-start; gap: var(--s-3);
+  margin-top: var(--s-5);
+  padding: var(--s-4);
+  background: var(--caution-soft);
+  border-left: 3px solid var(--kb-amber);
+  border-radius: var(--r-md);
+  font-size: var(--fs-small);
+  color: var(--caution-ink);
+  line-height: 1.5;
+}
+.mx-flag svg { width: 18px; height: 18px; color: var(--caution); margin-top: 1px; flex-shrink: 0; }
+.mx-flag strong { color: var(--ink); font-weight: 600; }
+
+.mx-trend { margin-top: var(--s-6); }
+.mx-trend-cap {
+  display: block;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  text-align: right;
+  margin-bottom: var(--s-2);
+}
+.mx-inline { margin-top: var(--s-5); }
+.mx-vers { margin-top: var(--s-6); padding-top: var(--s-5); border-top: 1px solid var(--rule); }
+.vers-list { list-style: none; display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-5); }
+.vers-list li {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+}
+.vers-list .num { color: var(--ink); font-weight: 600; font-size: var(--fs-base); }
+
+/* ─── 38.a.1 El dato principal ──────────────────────────────────────
+   Un número, su rótulo arriba y SU DENOMINADOR abajo. El denominador no es
+   una nota al pie: es lo que convierte el número en un resultado. Por eso
+   ocupa un renglón propio y no se puede omitir — el macro no tiene forma de
+   dibujar la tasa sin él.
+
+   `is-thin` es el estado que esta pantalla necesitaba y no tenía: muestra
+   por debajo del mínimo. Ahí NO se publica porcentaje. Se publica el
+   recuento crudo, en el mismo tamaño, y el número baja al secundario para
+   que se vea de un vistazo que no es comparable con sus vecinos. */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
+  gap: var(--s-5) var(--s-6);
+}
+.kpi { display: flex; flex-direction: column; gap: var(--s-1); min-width: 0; }
+.kpi + .kpi { margin-top: var(--s-5); }
+.kpi-row .kpi + .kpi { margin-top: 0; }
+.kpi-cap {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  line-height: 1.4;
+}
+.kpi-v {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+  font-size: var(--fs-2xl);
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -.03em;
+  color: var(--ink);
+  margin-top: var(--s-1);
+}
+.kpi.is-thin .kpi-v { color: var(--ink-3); }
+.kpi-v.is-empty {
+  font-family: var(--sans);
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--ink-3);
+}
+.kpi-unit { font-size: .45em; font-weight: 500; color: var(--ink-3); letter-spacing: 0; }
+.kpi-den {
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  line-height: 1.4;
+}
+.kpi-den .num { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums slashed-zero; }
+.kpi.is-thin .kpi-den { color: var(--ink-3); }
+.kpi-note { font-size: var(--fs-sm); color: var(--text-3); line-height: 1.45; }
+
+/* ─── 38.a.2 El cuadrante ───────────────────────────────────────────
+   La pieza central de la pantalla, y la única de las métricas de práctica
+   que no es una proporción: son cuatro recuentos.
+
+   De las cuatro celdas, dos llevan color y dos no. Las de la izquierda son
+   coincidencias y no piden nada. Las de la derecha son los dos modos de
+   desacuerdo, y NO PESAN LO MISMO: «marcó de más» cuesta una lectura de
+   más, «no marcó lo que había» es el modo de falla que el sistema declara
+   en todas sus pantallas y no puede descartar. Por eso una va en ámbar
+   —advertencia— y la otra en magenta —dato clave—, que es exactamente el
+   reparto de roles que la guía les da a los dos acentos.
+
+   Y por eso llevan además el nombre entero escrito debajo: si el color
+   fuera el único portador, la distinción entre los dos desacuerdos se
+   perdería para cualquiera que no lo distinga. */
+.cuad {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(64px, .8fr));
+  gap: 2px;
+}
+.cuad-head, .cuad-row { display: contents; }
+.cuad-head > span {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: 0 var(--s-3) var(--s-2);
+  text-align: center;
+}
+.cuad-head > span:first-child { padding: 0; }
+.cuad-k {
+  display: flex; align-items: center;
+  font-size: var(--fs-small);
+  color: var(--ink-2);
+  line-height: 1.35;
+  padding: var(--s-3) var(--s-3) var(--s-3) 0;
+}
+.cuad-c {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px;
+  padding: var(--s-3) var(--s-2);
+  border-radius: var(--r-md);
+  background: var(--kb-violet-50);
+  text-align: center;
+}
+.cuad-c .num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -.02em;
+  color: var(--ink);
+}
+.cuad-lbl {
+  font-size: var(--fs-xs);
+  line-height: 1.3;
+  color: var(--ink-2);
+  text-wrap: balance;
+}
+.cuad-c.is-warn { background: var(--caution-soft); }
+.cuad-c.is-warn .num { color: var(--caution); }
+.cuad-c.is-risk { background: var(--finding-tint); }
+.cuad-c.is-risk .num { color: var(--finding); }
+
+/* ─── 38.a.3 Segmentos: dónde se separan ────────────────────────────
+   Una fila por grupo. La barra arranca en CERO y su largo es la proporción,
+   así que no hay escala truncada que rotular. Cuando la muestra no alcanza
+   la barra se dibuja igual pero apagada, y el valor se muestra como
+   recuento: se ve que hay poco, que es el dato honesto. */
+.sg-list { display: flex; flex-direction: column; gap: var(--s-3); margin-top: var(--s-4); }
+.sg-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(80px, 1.2fr) auto;
+  grid-template-areas: "k bar v" "n n n";
+  align-items: center;
+  gap: 2px var(--s-3);
+}
+.sg-k   { grid-area: k; font-size: var(--fs-small); color: var(--ink-2); line-height: 1.3; }
+.sg-bar {
+  grid-area: bar;
+  position: relative;
+  height: 8px;
+  border-radius: var(--r-pill);
+  background: var(--kb-violet-100);
+  overflow: hidden;
+}
+.sg-fill {
+  display: block; height: 100%;
+  width: var(--w);
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  transform-origin: left center;
+}
+.sg-row.is-thin .sg-fill { background: var(--kb-violet-300); }
+.sg-v {
+  grid-area: v;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+  font-size: var(--fs-small);
+  font-weight: 600;
+  color: var(--ink);
+  min-width: 52px;
+  text-align: right;
+}
+.sg-row.is-thin .sg-v { color: var(--ink-3); font-weight: 500; }
+.sg-n { grid-area: n; font-size: var(--fs-xs); color: var(--text-3); }
+.sg-n .num { font-variant-numeric: tabular-nums slashed-zero; }
+
+/* ─── 38.a.4 La evidencia externa ───────────────────────────────────
+   Las tres piezas medidas contra el test anotado. Van en tarjetas, igual
+   que el resto, pero en su propia sección y con su propio rótulo: no son
+   la práctica de nadie. */
+.ev-card-label {
+  display: block;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: var(--s-5);
+}
+.ev-metrics, .ev-waffle {
+  background: var(--chrome);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-md);
+  padding: var(--s-6);
+  min-width: 0;
+}
+/* Las mediciones a la izquierda, lo que se le escapa a la derecha. Es una
+   sola lectura: qué acierta, y a cambio de qué. */
+.ev-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-5);
+  align-items: start;
+}
+@media (min-width: 940px) {
+  .ev-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+    grid-template-areas: "metrics waffle";
+  }
+  .ev-metrics { grid-area: metrics; }
+  .ev-waffle  { grid-area: waffle; }
+}
+/* El alcance clínico cierra la sección, igual que en el visor. */
+.mx > .scope { margin-top: var(--s-6); }
+
+/* ─── 38.b Gráfico de puntos con bigotes ────────────────────────────
+   «IC 95 %: 0,937 a 0,958» era una oración debajo de un número. Ahora el
+   intervalo es un segmento y el valor es una posición: las tres métricas
+   se comparan entre sí de un vistazo, que es lo que un médico apurado
+   necesita hacer con ellas.
+
+   El eje arranca en 80 y está rotulado. En un gráfico de puntos eso es
+   correcto —la POSICIÓN codifica el valor, no una longitud desde cero—
+   y sin truncar, un intervalo de dos puntos porcentuales mide un pelo. */
+.ev-metrics {
+  --mcol: 178px;   /* columna del rótulo */
+  --mval: 62px;    /* columna del valor  */
+  display: flex; flex-direction: column;
+  gap: var(--s-8);
+  min-width: 0;
+}
+.mrow, .maxis {
+  display: grid;
+  grid-template-columns: var(--mcol) minmax(0, 1fr) var(--mval);
+  align-items: center;
+  gap: var(--s-4);
+  min-width: 0;
+}
+
+.mrow-label {
+  display: flex; flex-direction: column; gap: 1px;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-2);
+  line-height: 1.25;
+}
+.mrow-note {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  font-weight: 400;
+}
+
+.mrow-track {
+  position: relative;
+  display: block;
+  height: 22px;
+  min-width: 0;
+}
+/* La pista: una línea, no una barra. La barra invitaría a leer la longitud
+   desde el borde izquierdo, que acá no significa nada (el eje empieza en 80). */
+.mrow-track::before {
+  content: '';
+  position: absolute; left: 0; right: 0; top: 50%;
+  height: 2px; margin-top: -1px;
+  border-radius: 1px;
+  background: var(--surface-3);
+}
+
+/* El intervalo medido. Los dos topes verticales son los bigotes. */
+.mrow-ic {
+  position: absolute;
+  top: 50%;
+  left: var(--lo);
+  width: calc(var(--hi) - var(--lo));
+  height: 8px; margin-top: -4px;
+  border-radius: 2px;
+  background: var(--accent-line);
+}
+.mrow-ic::before,
+.mrow-ic::after {
+  content: '';
+  position: absolute; top: -4px; bottom: -4px;
+  width: 2px;
+  background: var(--accent-2);
+  border-radius: 1px;
+}
+.mrow-ic::before { left: 0; }
+.mrow-ic::after  { right: 0; }
+
+/* El punto es la medición. Neutro a propósito: es una cantidad, no un
+   juicio. El juicio lo hace la grilla de al lado. */
+.mrow-dot {
+  position: absolute;
+  top: 50%; left: var(--pos);
+  width: 12px; height: 12px;
+  margin: -6px 0 0 -6px;
+  border-radius: 50%;
+  background: var(--text);
+  border: 2px solid var(--bg);
+  z-index: 2;
+}
+
+.mrow-v {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+  font-size: var(--fs-md);
+  font-weight: 500;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  letter-spacing: -.02em;
+}
+
+/* El eje, una vez para las tres filas. */
+.maxis { margin-top: var(--s-1); }
+.maxis-ticks {
+  grid-column: 2;
+  position: relative;
+  display: block;
+  height: 14px;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+.maxis-ticks > span {
+  position: absolute;
+  left: var(--pos);
+  transform: translateX(-50%);
+}
+.maxis-ticks > span:first-child { transform: none; }
+.maxis-ticks > span:last-child  { transform: translateX(-100%); }
+
+.maxis-key {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex; align-items: center; gap: 6px;
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+.maxis-seg {
+  position: relative;
+  width: 22px; height: 6px;
+  border-radius: 2px;
+  background: var(--accent-line);
+  flex-shrink: 0;
+}
+.maxis-seg::before,
+.maxis-seg::after {
+  content: '';
+  position: absolute; top: -3px; bottom: -3px;
+  width: 2px; border-radius: 1px;
+  background: var(--accent-2);
+}
+.maxis-seg::before { left: 0; }
+.maxis-seg::after  { right: 0; }
+
+/* ─── 38.c Lo que se le escapa, contable ────────────────────────────
+   El recall como decimal se lee «casi 90, bien». Las casillas encendidas
+   sobre cien (tantas como fracturas se le escapan, derivadas de
+   MODEL_METADATA) se leen como lo que son. Es el objeto más grande de la
+   pantalla porque es
+   la salvedad que más caro sale ignorar. */
+.waffle {
+  margin: 0;
+  display: flex; flex-direction: column;
+  gap: var(--s-5);
+  max-width: 340px;
+}
+.waffle-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 4px;
+  width: min(100%, 244px);
+}
+/* Las 87 que sí detecta van en violeta 100 y las 13 que se le escapan en
+   magenta pleno: 3,07 entre las dos, que es lo que le corresponde a un
+   objeto gráfico que porta información. */
+.wcell {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 4px;
+  background: var(--kb-violet-100);
+}
+.wcell.is-miss { background: var(--kb-magenta); }
+/* Tapa del color de las otras 87. En reposo es INVISIBLE: la casilla se ve
+   roja. Si la animación no corre, si el navegador no la soporta o si el
+   movimiento está reducido, la grilla está completa desde el cuadro cero y
+   la salvedad se lee entera. Lo único que hace el movimiento es destapar. */
+.wcell.is-miss::after {
+  content: '';
+  position: absolute; inset: 0;
+  border-radius: inherit;
+  background: var(--kb-violet-100);
+  opacity: 0;
+}
+
+.waffle-cap { display: flex; flex-direction: column; gap: var(--s-2); }
+.waffle-n {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+  font-size: var(--fs-3xl);
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -.03em;
+  /* 38 px: es texto grande, así que puede usar el magenta de display sin
+     bajar a la mezcla de 6:1 que necesita el texto normal. */
+  color: var(--finding-display);
+}
+.waffle-unit {
+  font-size: .38em;
+  color: var(--text-3);
+  letter-spacing: 0;
+  margin-left: 2px;
+}
+.waffle-label {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  line-height: 1.45;
+  max-width: 31ch;
+  text-wrap: balance;
+}
+.waffle-label strong { color: var(--text); font-weight: 600; }
+/* «Un resultado sin hallazgos no descarta fractura» es una salvedad
+   clínica y lleva la forma que KIBBO le da a una: franja de 3 px, fondo
+   tintado, canto redondeado. */
+.waffle-line {
+  font-size: var(--fs-small);
+  color: var(--ink);
+  font-weight: 500;
+  line-height: 1.45;
+  padding: var(--s-3);
+  background: var(--caution-soft);
+  border-left: 3px solid var(--kb-amber);
+  border-radius: var(--r-md);
+  max-width: 34ch;
+}
+
+/* ─── 38.e LO QUE ESTUVO ACÁ — retirado, no comentado ────────────────
+   Vivía acá la sección «Tu actividad»: `.act`, `.act-lead`, `.act-figure`,
+   `.act-trend`, `.act-props`, `.prop-cell` y `.act-charts`. La pantalla se
+   reescribió entera el 31/08/2026 y esa sección dejó de existir como tal:
+   lo que contaba —cuántos análisis, con qué reparto, con cuánta seguridad—
+   pasó a `.mx` + `.kpi-row`, que es la misma gramática que usan las otras
+   tres secciones en vez de una propia.
+
+   Lo que SÍ sobrevive y se usa desde la pantalla nueva son las piezas que
+   no eran de esa sección sino del sistema: `.prop` / `.tally-bar` (§37),
+   `.chart-card` / `.chart-box` / `.chart-empty` (§23) y los modificadores
+   de alto `.chart-box-trend` y `.chart-box-short`, que quedan acá abajo
+   porque no tienen otro lugar. */
+.chart-box-trend { height: 118px; }
+.chart-empty-trend { height: 118px; flex-direction: row; }
+.chart-empty-trend svg { width: 18px; height: 18px; }
+.chart-box-short { height: 212px; }
+.chart-empty-short { height: 212px; }
+.chart-note {
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+  margin-top: var(--s-3);
+  line-height: 1.5;
+}
+
+/* ─── 38.f El bloque plegado del final ──────────────────────────────
+   Siete filas con dos líneas de texto cada una eran el bloque más pesado
+   de la pantalla, y son material de reentrenamiento, no lectura de
+   guardia. El recuento va en el rótulo: no hay que abrirlo para saber si
+   hay algo adentro. */
+.dash-fold { margin-top: var(--s-12); }
+.dash-fold > summary { font-size: var(--fs-base); color: var(--text-2); }
+.dash-fold > summary:hover { color: var(--text); }
+.fold-n {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--kb-violet-50);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-pill);
+  padding: 2px 10px;
+}
+.fold-note {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  margin-left: auto;
+}
+.dash-fold .quiet-body { padding-left: 0; padding-top: var(--s-3); }
+.dash-none { margin-top: var(--s-12); padding-top: var(--s-5); border-top: 1px solid var(--line); }
+
+/* ─── 38.g Angosto ─────────────────────────────────────────────────── */
+@media (max-width: 620px) {
+  /* El rótulo no entra al lado de la pista: se va arriba y la pista toma
+     el ancho completo. */
+  .mrow, .maxis { grid-template-columns: minmax(0, 1fr) var(--mval); gap: var(--s-2) var(--s-3); }
+  .mrow-label { grid-column: 1 / -1; flex-direction: row; align-items: baseline; gap: var(--s-2); }
+  .maxis-key { grid-column: 1 / -1; grid-row: 2; }
+  .maxis-ticks { grid-column: 1; grid-row: 1; }
+  .ev-metrics { gap: var(--s-6); }
+  .waffle-grid { width: 100%; max-width: 228px; }
+  .fold-note { display: none; }   /* el recuento ya dice de qué se trata */
+  /* El cuadrante no entra en tres columnas: el rótulo de fila se va arriba
+     y las dos celdas quedan lado a lado. Sigue siendo un 2×2 leído por
+     filas, que es como se lee. */
+  .cuad { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cuad-head { display: none; }
+  .cuad-k { grid-column: 1 / -1; padding: var(--s-3) 0 var(--s-1); font-weight: 600; color: var(--ink); }
+  .sg-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "k v" "bar bar" "n n"; }
+  .sg-bar { margin-top: var(--s-1); }
+}
+
+/* ─── 38.h Movimiento ───────────────────────────────────────────────
+   Corto y con propósito, igual que en el visor, y bajo la MISMA regla de
+   magnitudes de §32.b: acá no se anima ningún largo. Los números tampoco
+   cuentan hacia arriba: son datos, no un marcador. */
+/* Mismo criterio que en el visor: el fundido lo lleva la PISTA, nunca el
+   relleno. Así el objeto que porta la magnitud contesta `animationName:
+   none` cuando se lo mide, y no hay keyframes que haya que ir a leer para
+   descartar que se mueva un borde. */
+
+/* ── EL CUÁNDO SE MUDÓ, EL QUÉ SE QUEDÓ ─────────────────────────────
+   Estas figuras estaban disparadas por la CARGA DE LA PÁGINA y eso era un
+   defecto medible, no una cuestión de gusto: todas viven bajo el pliegue.
+   El conteo de las casillas marcadas —el argumento más caro del panel,
+   cuántas fracturas se le escapan al sistema— terminaba en los primeros 900 ms,
+   contra una pantalla que el médico todavía no había scrolleado. Para
+   cuando llegaba, ya había pasado.
+
+   Ahora el CUÁNDO lo decide `motion.js` con ScrollTrigger: cada figura se
+   anima al entrar en el campo visual, una sola vez, y nunca atada al
+   progreso del scroll (no hay nada que recorrer con el dedo).
+
+   El QUÉ se queda acá, en keyframes, y a propósito: son declaraciones
+   auditables, corren fuera del hilo principal, y el estado por defecto
+   —sin clase— ES el estado final. Si `motion.js` no corre, si GSAP no
+   cargó o si el movimiento está reducido, la clase no se agrega nunca y el
+   panel se lee entero desde el primer cuadro. La hoja no esconde nada
+   esperando al JS. */
+@media (prefers-reduced-motion: no-preference) {
+  /* Las casillas marcadas (una por fractura que se le escapa, según el
+     recall de MODEL_METADATA) se encienden de a una, 24 ms de distancia. No
+     es una entrada: es un CONTEO. «N de cada 100» como número se lee «casi
+     90, bien»; enumerado se lee como lo que es. Nada se esconde mientras
+     tanto — el N/100 de 46 px, la frase y las 100 casillas están enteros
+     desde el primer cuadro. Lo que llega de a una es la marca, y la marca
+     es la que convierte el número en cantidad. Sin rebote y sin escala:
+     son fracturas que no se detectan, no un logro que se festeja. */
+  .ev-waffle.is-contando .wcell.is-miss::after {
+    animation: miss-uncover .15s var(--ease) backwards;
+    animation-delay: calc(var(--i, 0) * 24ms);
+  }
+  @keyframes miss-uncover { from { opacity: 1; } }
+}
+
+/* Las pistas (`.tally-bar`, `.mrow-track`) y el punto del
+   gráfico las funde `motion.js` con la misma duración y la misma curva que
+   tenían acá. Se documenta lo que hacen, porque el argumento sigue siendo
+   el mismo y es el que se defiende:
+
+   · EL INTERVALO aparece a su ancho medido, y el fundido va en la pista que
+     lo contiene junto con el punto: los dos son la MISMA medición y
+     aparecen juntos. Abrir el intervalo desde el centro con `scaleX`
+     parecía la lectura honesta —incertidumbre alrededor de una medición—
+     pero afirma lo contrario de lo que quiere decir: durante los 300 ms el
+     IC se ve MÁS ANGOSTO que el medido, o sea el modelo más preciso de lo
+     que es. Un intervalo de confianza que crece es un intervalo de
+     confianza falso.
+
+   · EL PUNTO no viaja desde el arranque del eje. En un gráfico de puntos la
+     posición ES el valor: un punto recorriendo la pista muestra durante
+     250 ms sensibilidades que el modelo no tiene. Es el mismo error que un
+     contador que sube, en geometría. Aterriza en su lugar —crece sin mover
+     su centro— y nunca ocupa una posición falsa.
+
+   · LAS TRES FILAS llegan JUNTAS, no escalonadas. El escalonado es para
+     listas de cosas independientes; estas tres son UNA lectura —se leen
+     comparándolas entre sí— y escalonarlas dejaba dos pistas vacías al lado
+     de su número durante 300 ms. */
+
+@media (prefers-reduced-motion: reduce) {
+  /* Las pistas, no los rellenos: es donde quedó colgado el fundido. Se
+     dejan además los nombres viejos por si alguna regla los recupera —
+     apagar de más acá no cuesta nada y olvidarse de uno sí. */
+  .prop .tally-bar, .prop .tally-fill,
+  .mrow-track, .mrow-ic, .mrow-dot,
+  .wcell.is-miss::after { animation: none !important; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   39. EL SEÑALAMIENTO — la segunda figura de movimiento
+   ----------------------------------------------------------------------
+   La app tenía UNA figura: el barrido (§32), que es la máquina leyendo.
+   Ésta es la otra mitad de la conversación: el instrumento contestándole
+   al médico. Es una gramática distinta a propósito:
+
+     · el barrido es largo, lineal y lo decide el sistema;
+     · el señalamiento es corto, ease-out y siempre lo dispara una mano.
+
+   La frecuencia manda. Rozar la lista de hallazgos con el puntero pasa
+   decenas de veces por estudio: ahí el movimiento es casi imperceptible
+   (130 ms, sólo opacidad). FIJAR un hallazgo pasa pocas veces y es
+   deliberado —"llevame ahí"— y ahí sí el instrumento señala: la placa
+   viaja y la caja se anilla una vez.
+
+   Nada de esto toca el dato de triage. La palabra del veredicto, el filete
+   que la corona y las salvedades siguen SIN animarse: están legibles
+   desde el cuadro cero y esperar por ellos sería el único lujo que un
+   médico de guardia no puede pagar.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─── 39.a El vínculo hallazgo ↔ caja ─────────────────────────────────
+   Bajar de golpe a 32 % las cajas no señaladas hacía PARPADEAR la placa
+   con cada fila que el puntero rozaba. 130 ms alcanzan para que se lea
+   como un cambio de foco y no como un salto, y quedan muy por debajo del
+   umbral en el que una respuesta empieza a sentirse lenta. */
+.bx, .bx-tag { transition: opacity .13s var(--ease); }
+
+/* ─── 39.b El anillo de localización ──────────────────────────────────
+   Cuando el médico FIJA un hallazgo (click, N o P), un anillo se abre una
+   sola vez sobre la caja y se apaga. No es un pulso: no se repite, no
+   respira y no anuncia nada. Es un localizador — le dice al ojo periférico
+   en qué punto de la placa terminó lo que pidió desde el panel. Hace falta
+   justamente porque la placa además viaja hasta ahí. */
+/* Va en el color de la INTERACCIÓN, no en el del hallazgo, y por dos
+   razones. La primera es semántica: el anillo no dice "acá hay una
+   fractura" —eso ya lo dice la caja roja— dice "vos elegiste ésta", que es
+   exactamente lo que la fila fijada del panel marca con el mismo acento.
+   La segunda es que se vea: un anillo rojo cerrándose sobre una caja roja
+   es un borde que engorda, no un señalamiento. */
+.bx-ping {
+  fill: none;
+  stroke: var(--plate-accent);
+  stroke-width: 2;
+  pointer-events: none;
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+}
+
+/* ─── 39.c El viaje de la placa ───────────────────────────────────────
+   `enmarcar()` recentraba asignando el transform de una sola vez: la placa
+   TELETRANSPORTABA y el médico perdía de dónde a dónde se movió. Era el
+   agujero de continuidad espacial más caro del visor, porque ocurre justo
+   cuando pidió que lo lleven a un hallazgo.
+   260 ms de traslado dicen "esto se corrió hasta acá" y no cuestan nada
+   nuevo: el transform ya estaba, sólo faltaba dejarlo transicionar. Se
+   apaga apenas el médico toca la placa — nadie espera a una animación. */
+.reader.is-gliding .stage-img,
+.reader.is-gliding .boxlayer { transition: transform .26s var(--ease-move); }
+/* El recorte de la cortina vive en coordenadas de la IMAGEN: si la placa
+   viaja y el recorte salta, la línea y el corte se despegan a la vista.
+   Viaja con la misma curva y la misma duración, clavado. */
+.reader.is-gliding .viewport { transition: --clip .26s var(--ease-move); }
+
+/* ─── 39.d La cortina entra barriendo ─────────────────────────────────
+   Pasar de anotada a original es una afirmación epistémica: ESAS MARCAS
+   LAS PUSO EL SISTEMA. Apareciendo de golpe en el medio de la placa, la
+   cortina era un corte y no una afirmación. Entrando desde el canto, la
+   línea se lleva las marcas consigo: se ve que son una capa, se ve de
+   dónde salen, y de paso queda enseñado que se arrastra. */
+.reader.is-wiping .viewport {
+  transition: --clip .28s var(--ease), --corte .28s var(--ease);
+}
+
+/* ─── 39.e El plegable de alcance ─────────────────────────────────────
+   Es el único bloque de la app que aparece de golpe con contenido largo:
+   abrirlo empujaba media columna sin avisar. Se abre en 220 ms para que se
+   entienda que el texto SALIÓ de ahí. No hay riesgo de esconder una
+   salvedad: sólo se anima cuando el médico ya decidió abrirla, y cerrado
+   el rótulo ámbar sigue en pantalla. Donde el navegador no soporta
+   `interpolate-size`, abre instantáneo como siempre. */
+@supports (interpolate-size: allow-keywords) {
+  @media (prefers-reduced-motion: no-preference) {
+    .scope { interpolate-size: allow-keywords; }
+    .scope::details-content {
+      block-size: 0;
+      overflow: clip;
+      opacity: 0;
+      transition: content-visibility .22s allow-discrete,
+                  block-size .22s var(--ease),
+                  opacity .16s var(--ease);
+    }
+    .scope[open]::details-content { block-size: auto; opacity: 1; }
+  }
+}
+
+/* ─── 39.f La identidad del registro viaja ────────────────────────────
+   Del historial al visor el chasis ya quedaba clavado (§32.d), pero el
+   contenido se cruzaba entero y no quedaba nada que dijera CUÁL de las
+   cincuenta filas se abrió. El número del análisis vuela de la celda al
+   encabezado del panel: es la respuesta a "de dónde vino esta vista", y es
+   el único dato que las dos pantallas comparten. */
+@media (prefers-reduced-motion: no-preference) {
+  .rd-id { view-transition-name: tv-registro; }
+  ::view-transition-group(tv-registro) {
+    /* La misma duración que el cruce del contenido (§32.d): la navegación
+       entera se resuelve de una y no queda un número volando sobre la
+       placa después de que la placa ya está. */
+    animation-duration: .24s;
+    /* Cruza la pantalla entera en diagonal: es un DESPLAZAMIENTO, no una
+       entrada. Con `--ease` el recorrido se comía en los primeros 60 ms y
+       lo que quedaba era una raya. */
+    animation-timing-function: var(--ease-move);
+  }
+  ::view-transition-old(tv-registro),
+  ::view-transition-new(tv-registro) { animation-duration: .18s; }
+}
+
+/* ─── 39.g Movimiento reducido ────────────────────────────────────────
+   El JS ya consulta la preferencia y ni crea el anillo ni enciende el
+   viaje ni el barrido de la cortina. Esto es el cinturón además de los
+   tiradores: si algo se colara, queda quieto igual. Lo que NO se pierde es
+   la información — el resaltado, el recorte de la cortina, el encuadre del
+   hallazgo y el plegable siguen funcionando, sólo que sin trayecto. */
+@media (prefers-reduced-motion: reduce) {
+  .bx,
+  .reader.is-gliding .stage-img,
+  .reader.is-gliding .boxlayer,
+  .reader.is-wiping .viewport { transition: none !important; }
+  .bx-ping { display: none; }
+}

@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+
+{% block title %}Historial · {{ app_name }}{% endblock %}
+
+{% block content %}
+{% set total = analyses|length %}
+{% set con_hallazgos = analyses|selectattr('is_abnormal')|list|length %}
+{# `total` son las filas que hay EN LA TABLA; `total_registros` los análisis
+   que tiene la cuenta. Coinciden salvo que se alcance el tope de la consulta,
+   y ahí la pantalla lo dice en vez de llamar "Todos" a una ventana. #}
+{% set recortado = total < total_registros %}
+
+<div class="page-header">
+  <div>
+    <h1>Historial</h1>
+    <p class="page-header-sub">Análisis realizados con tu cuenta</p>
+  </div>
+  <a href="/analysis/upload" class="btn btn-sm btn-primary">Nuevo análisis</a>
+</div>
+
+{% if analyses %}
+<div class="table-controls">
+  <div class="search-field">
+    {{ m.icon('search') }}
+    <input type="search" id="q" placeholder="Buscar por fecha"
+           aria-label="Buscar en el historial" autocomplete="off">
+  </div>
+  <div class="seg" role="group" aria-label="Filtrar por clasificación">
+    <button type="button" data-f="all" aria-pressed="true">{{ 'Recientes' if recortado else 'Todos' }} <span class="count">{{ total }}</span></button>
+    <button type="button" data-f="abn" aria-pressed="false">Con hallazgos <span class="count">{{ con_hallazgos }}</span></button>
+    <button type="button" data-f="norm" aria-pressed="false">Sin hallazgos <span class="count">{{ total - con_hallazgos }}</span></button>
+  </div>
+</div>
+
+<div class="table-wrap">
+  <table class="data-table" id="tabla">
+    <thead>
+      <tr>
+        <th><button type="button" class="th-sort" data-sort="0" data-type="date">Fecha</button></th>
+        <th>Clasificación</th>
+        <th><button type="button" class="th-sort" data-sort="2" data-type="num"
+                   title="Seguridad máxima del detector en la placa. Término técnico: score crudo post-NMS — no es una probabilidad de fractura.">Seguridad</button></th>
+        <th><button type="button" class="th-sort" data-sort="3" data-type="num">Hallazgos</button></th>
+        <th>Opinión</th>
+        <th><span class="sr-only">Acciones</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in analyses %}
+      {% set heredado = a.anatomical_region != default_region %}
+      <tr data-abn="{{ 'true' if a.is_abnormal else 'false' }}"
+          class="{{ 'is-legacy' if heredado else '' }}">
+        <td data-v="{{ a.created_at|iso_local }}">
+          <div>{{ a.created_at|fecha }}</div>
+          {# El número va en su propio elemento porque es lo único que esta
+             fila y el visor comparten: al abrir el análisis vuela de acá al
+             encabezado del panel y contesta "de dónde vino esta vista". #}
+          <div class="td-id">{{ a.created_at|hora }} · <span class="td-nid" data-nid>#{{ a.id }}</span></div>
+        </td>
+        <td>
+          {% if a.is_abnormal %}
+            <span class="badge badge-finding">Con hallazgos</span>
+          {% else %}
+            <span class="badge badge-neutral">Sin hallazgos</span>
+          {% endif %}
+        </td>
+        {# "Confianza máxima 0,0 %" no significa "0 % de chance de fractura":
+           significa que ninguna caja pasó el umbral de dibujo. #}
+        <td class="num" data-v="{{ a.max_detection_confidence or 0 }}">
+          {{ m.conf_display(a.max_detection_confidence, a.findings_above_abnormal) }}
+        </td>
+        <td class="num" data-v="{{ a.findings_above_abnormal }}">{{ a.findings_above_abnormal }}</td>
+        <td>
+          {% if a.feedback %}
+            {% if a.feedback.agreed %}
+              <span class="badge badge-accent">De acuerdo</span>
+            {% else %}
+              <span class="badge badge-caution">En desacuerdo</span>
+            {% endif %}
+          {% else %}
+            <span class="muted" aria-label="Sin opinión registrada">Sin registrar</span>
+          {% endif %}
+        </td>
+        <td><a href="/analysis/{{ a.id }}/results" class="btn btn-sm btn-secondary">Abrir</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="table-foot">
+  <span data-count-msg>{{ total }} análisis</span>
+  <span class="pager">
+    <button type="button" class="btn btn-sm btn-secondary" data-page="prev">Anterior</button>
+    <span data-page-msg class="mono"></span>
+    <button type="button" class="btn btn-sm btn-secondary" data-page="next">Siguiente</button>
+  </span>
+</div>
+
+{% if recortado %}
+<p class="field-hint" style="margin-top:var(--s-3);">
+  Se muestran los {{ total }} análisis más recientes de {{ total_registros }}. Los
+  anteriores siguen guardados y son accesibles por su enlace directo.
+</p>
+{% endif %}
+
+{% else %}
+<div class="empty-state">
+  {{ m.icon('archive') }}
+  <p>Todavía no hay análisis con esta cuenta.</p>
+  <a href="/analysis/upload" class="btn btn-primary">Analizar la primera radiografía</a>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* Búsqueda, filtro, orden y paginado sobre la tabla ya renderizada.
+   Antes eran 58 filas sin ninguna de las cuatro cosas. */
+(function () {
+  var tabla = document.getElementById('tabla');
+  if (!tabla) return;
+  var cuerpo = tabla.tBodies[0];
+  var filas = Array.prototype.slice.call(cuerpo.rows);
+  var q = document.getElementById('q');
+  var filtro = 'all';
+  var pagina = 0;
+  var POR_PAGINA = 15;
+  var orden = { col: 0, dir: -1 };
+
+  var msgCount = document.querySelector('[data-count-msg]');
+  var msgPage = document.querySelector('[data-page-msg]');
+  var btnPrev = document.querySelector('[data-page="prev"]');
+  var btnNext = document.querySelector('[data-page="next"]');
+
+  function visibles() {
+    var texto = (q.value || '').trim().toLowerCase();
+    return filas.filter(function (r) {
+      if (filtro === 'abn' && r.dataset.abn !== 'true') return false;
+      if (filtro === 'norm' && r.dataset.abn !== 'false') return false;
+      if (texto && r.textContent.toLowerCase().indexOf(texto) === -1) return false;
+      return true;
+    });
+  }
+
+  function valor(fila, col) {
+    var c = fila.cells[col];
+    return c.dataset.v !== undefined ? c.dataset.v : c.textContent.trim();
+  }
+
+  /* LA CONTINUIDAD ESPACIAL DE LA TABLA.
+     `render()` reescribe el cuerpo con `appendChild`: las filas
+     TELETRANSPORTAN a su lugar nuevo. El médico que acaba de ordenar por
+     score no tiene forma de seguir dónde quedó la fila que estaba mirando, y
+     ése es justamente el momento en que le importa.
+
+     Flip (motion.js §H) mide dónde estaba cada fila ANTES del cambio y dónde
+     quedó DESPUÉS, y anima la diferencia. La información no cambia: cambia
+     el lugar donde está, que es exactamente lo que el movimiento tiene que
+     decir. Lo que se mueve es la POSICIÓN de la fila; las barras de score
+     que lleva adentro conservan su ancho exacto durante todo el recorrido.
+
+     Si no hay capa de movimiento, `medir()` no existe y `render()` hace lo
+     que hacía siempre. */
+  var primerPintado = true;
+  function render() {
+    /* El primer `render()` no se anima: la tabla no viene DE ningún lado, es
+       la primera vez que se dibuja. Ahí el movimiento que corresponde es el
+       encendido de la página (motion.js §40), que la trata como un bloque. */
+    var flip = (!primerPintado && window.TVFlipTabla)
+      ? window.TVFlipTabla.medir() : null;
+    var vis = visibles();
+
+    vis.sort(function (a, b) {
+      var va = valor(a, orden.col), vb = valor(b, orden.col);
+      var na = parseFloat(va), nb = parseFloat(vb);
+      if (!isNaN(na) && !isNaN(nb)) return (na - nb) * orden.dir;
+      return va < vb ? -1 * orden.dir : va > vb ? 1 * orden.dir : 0;
+    });
+
+    var paginas = Math.max(1, Math.ceil(vis.length / POR_PAGINA));
+    if (pagina >= paginas) pagina = paginas - 1;
+    if (pagina < 0) pagina = 0;
+
+    filas.forEach(function (r) { r.hidden = true; });
+    vis.slice(pagina * POR_PAGINA, (pagina + 1) * POR_PAGINA)
+       .forEach(function (r) { r.hidden = false; cuerpo.appendChild(r); });
+
+    msgCount.textContent = vis.length === filas.length
+      ? vis.length + ' análisis'
+      : vis.length + ' de ' + filas.length + ' análisis';
+    msgPage.textContent = (pagina + 1) + ' / ' + paginas;
+    btnPrev.disabled = pagina === 0;
+    btnNext.disabled = pagina >= paginas - 1;
+
+    if (flip) window.TVFlipTabla.animar(flip);
+    primerPintado = false;
+  }
+
+  q.addEventListener('input', function () { pagina = 0; render(); });
+
+  document.querySelectorAll('[data-f]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      filtro = b.dataset.f;
+      pagina = 0;
+      document.querySelectorAll('[data-f]').forEach(function (x) {
+        x.setAttribute('aria-pressed', x === b ? 'true' : 'false');
+      });
+      render();
+    });
+  });
+
+  document.querySelectorAll('.th-sort').forEach(function (th) {
+    th.addEventListener('click', function () {
+      var col = parseInt(th.dataset.sort, 10);
+      orden.dir = (orden.col === col) ? -orden.dir : -1;
+      orden.col = col;
+      document.querySelectorAll('.th-sort').forEach(function (x) {
+        x.removeAttribute('data-dir');
+      });
+      th.setAttribute('data-dir', orden.dir === 1 ? 'asc' : 'desc');
+      render();
+    });
+  });
+
+  btnPrev.addEventListener('click', function () { pagina--; render(); });
+  btnNext.addEventListener('click', function () { pagina++; render(); });
+
+  render();
+})();
+
+/* Continuidad espacial historial → visor.
+   La barra y el pie ya quedaban clavados entre páginas (view transitions,
+   §32.d), pero el contenido se cruzaba entero: nada decía CUÁL de las
+   cincuenta filas se abrió. Marcando el número del análisis justo antes de
+   navegar, el navegador lo trata como el MISMO elemento en las dos páginas
+   y lo lleva de la celda al encabezado del panel de lectura.
+
+   El nombre se pone en el click y no en el HTML porque tiene que ser único
+   en el documento: si las cincuenta filas lo llevaran puesto, el navegador
+   descartaría la transición entera. */
+(function () {
+  var tabla = document.getElementById('tabla');
+  if (!tabla) return;
+  if (!('startViewTransition' in document)) return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  var marcado = null;
+  function limpiar() {
+    if (!marcado) return;
+    marcado.style.removeProperty('view-transition-name');
+    marcado = null;
+  }
+
+  tabla.addEventListener('click', function (e) {
+    var a = e.target.closest ? e.target.closest('a[href*="/results"]') : null;
+    if (!a) return;
+    var fila = a.closest('tr');
+    var nid = fila && fila.querySelector('[data-nid]');
+    if (!nid) return;
+    limpiar();
+    nid.style.setProperty('view-transition-name', 'tv-registro');
+    marcado = nid;
+  });
+
+  /* Si el médico vuelve con el botón atrás, la página puede salir del
+     cache con la marca puesta: dos elementos con el mismo nombre matan la
+     próxima transición. */
+  window.addEventListener('pageshow', limpiar);
+})();
+</script>
+{% endblock %}

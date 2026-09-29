@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+
+{% block title %}Estudio #{{ study_id }} · {{ app_name }}{% endblock %}
+
+{% block main_class %}main-stage{% endblock %}
+
+{% block head %}
+<script defer src="/static/js/viewer.js?v=19"></script>
+{% endblock %}
+
+{% block content %}
+{% set out_of_domain = region_key != default_region %}
+{# El visor abre en la imagen de MAYOR URGENCIA, no en la primera del ZIP.
+   Cuál es la decide `imagen_mas_urgente` en el servidor (es una decisión
+   clínica, no de presentación) y llega como `initial_index`. Antes acá había
+   un `results[0]` fijo: el estudio #1 tiene la fractura en la imagen 3 y al
+   abrirlo el panel anunciaba SIN HALLAZGOS. #}
+{% set first = (results | selectattr('index', 'equalto', initial_index) | first) if results else none %}
+{% set sin_hallazgos = total_images - images_with_findings %}
+{% set nivel_estudio = 'LOW' if out_of_domain else (urgencia_estudio.nivel if urgencia_estudio else 'LOW') %}
+
+{# La barra del estudio es la única cabecera. Antes había además un bloque
+   de avisos apilados debajo que empujaba el visor hacia abajo y repetía,
+   palabra por palabra, lo que ya decía cada panel de imagen. #}
+<div class="study-bar">
+  <div class="study-bar-main">
+    <h1>Estudio <span class="page-id">#{{ study_id }}</span></h1>
+    {# El veredicto del ESTUDIO: el de su imagen más urgente. Es lo que decide
+       el triage, así que va en la cabecera y no escondido en el panel de una
+       imagen. Reusa la escalera y la palabra del veredicto que ya existen. #}
+    {% if results %}
+    {# `EN EL ESTUDIO` y `ARCHIVO` estaban en mayúscula espaciada: es el
+       quemado de la película, y acá no hay película. Fuera de la placa la
+       app no lleva ni un rótulo así. #}
+    <p class="meta-line study-verdict {{ m.verdict_class(nivel_estudio) }}">
+      {{ m.urgency_rule(nivel_estudio, neutro=out_of_domain) }}
+      <strong>{{ m.verdict_word(nivel_estudio) }}</strong>
+      <span class="ov-key">en el estudio</span>
+    </p>
+    {% endif %}
+    {# Región y modelo NO se repiten acá: ya están sobreimpresos en la placa,
+       que es donde el médico los está mirando. #}
+    <p class="meta-line">
+      <span><span class="ov-key">Archivo</span> <strong>{{ original_zip }}</strong></span>
+    </p>
+  </div>
+
+  {# El recuento del estudio, como proporción: la barra dice de un vistazo
+     qué parte del estudio quedó marcada. Antes eran tres números sueltos. #}
+  <div class="study-tally">
+    <div class="tally-bar" role="img"
+         aria-label="{{ images_with_findings }} de {{ total_images }} imágenes con hallazgos.">
+      <span class="tally-fill" style="--w: {{ (images_with_findings / total_images * 100) if total_images else 0 }}%;"></span>
+    </div>
+    <div class="tally-keys">
+      <span class="tally-key is-finding"><strong>{{ images_with_findings }}</strong> con hallazgos</span>
+      <span class="tally-key"><strong>{{ sin_hallazgos }}</strong> sin hallazgos</span>
+      <span class="tally-key tally-total">{{ total_images }} imágenes</span>
+    </div>
+  </div>
+</div>
+
+{% if out_of_domain %}
+<div class="study-alerts">
+  <div class="domain-flag" style="margin-bottom:0;">
+    {{ m.icon('alert') }}
+    <div>
+      <strong>Estudio fuera del dominio validado.</strong>
+      Procesado con un modelo retirado. No se informa prioridad clínica.
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if not results %}
+<div class="container">
+  <div class="empty-state">
+    {{ m.icon('archive') }}
+    <p>El estudio no tiene imágenes procesadas.</p>
+    <a href="/analysis/upload" class="btn btn-primary">Cargar un estudio</a>
+  </div>
+</div>
+{% else %}
+
+<div class="reader" data-viewer>
+
+  <section class="stage" aria-label="Visor del estudio">
+    {{ m.viewer_toolbar() }}
+    {# Una franja por imagen, sólo visible la de la imagen abierta. Quién
+       está abierta ya lo decide viewer.js; el script del final espeja esa
+       decisión. Ver la nota en el macro sobre por qué NO usa
+       data-panel-idx. #}
+    {% for r in results %}
+    {%- set n = 'LOW' if out_of_domain else r.urgency.nivel -%}
+    {{ m.verdict_strip(n, neutro=out_of_domain, idx=r.index, oculto=r.index != initial_index,
+                       is_abnormal=r.is_abnormal) }}
+    {% endfor %}
+
+    <div class="viewport" data-viewport tabindex="0"
+         aria-label="Imagen del estudio {{ study_id }}. Flechas para desplazar, más y menos para el zoom.">
+      {# Ver results.html: capa base limpia, capa anotada del servidor como
+         respaldo, y las cajas redibujadas como vectores cuando el JS corre. #}
+      <img class="stage-img stage-img-base" data-stage-base aria-hidden="true" alt=""
+           src="/analysis/imagen/{{ first.original_image }}">
+      <img class="stage-img stage-img-top" data-stage-img
+           src="/analysis/imagen/{{ first.annotated_image }}"
+           data-annotated="/analysis/imagen/{{ first.annotated_image }}"
+           data-original="/analysis/imagen/{{ first.original_image }}"
+           alt="Imagen del estudio con las regiones señaladas por el sistema">
+      <svg class="boxlayer" data-boxlayer aria-hidden="true" hidden></svg>
+
+      <div class="overlay overlay-tl">
+        <div><strong>ESTUDIO {{ study_id }}</strong></div>
+        <div><span class="ov-key">IMAGEN</span> <span data-ov="idx">{{ first.index }}</span> / {{ total_images }}</div>
+        <div><span class="ov-key">REGIÓN</span> {{ anatomical_region }}</div>
+      </div>
+      <div class="overlay overlay-tr">
+        <div><span class="ov-key">MODELO</span> {{ model_version or 'sin registrar' }}</div>
+      </div>
+      <div class="overlay overlay-bl">
+        <span class="ov-key">ZOOM</span> <span data-zoom-readout>100%</span>
+      </div>
+      <div class="overlay overlay-br">
+        <span data-img-state>MARCAS</span>
+      </div>
+    </div>
+
+    <!-- Tira de imágenes. Cada cuadro lleva SUS cajas: al cambiar de imagen
+         el visor las redibuja sin volver al servidor. -->
+    <div class="filmstrip" data-filmstrip role="tablist" aria-label="Imágenes del estudio">
+      {% for r in results %}
+      <button type="button"
+              class="frame {{ 'has-finding' if r.is_abnormal else '' }}"
+              role="tab"
+              aria-current="{{ 'true' if r.index == initial_index else 'false' }}"
+              data-idx="{{ r.index }}"
+              data-finding="{{ 'true' if r.is_abnormal else 'false' }}"
+              data-annotated="/analysis/imagen/{{ r.annotated_image }}"
+              data-original="/analysis/imagen/{{ r.original_image }}"
+              data-boxes="{{ r.boxes_json }}"
+              data-name="{{ r.source_filename }}"
+              title="Imagen {{ r.index }}{{ ' · con hallazgos' if r.is_abnormal else '' }}">
+        <img src="/analysis/imagen/{{ r.annotated_image }}" alt="Miniatura de la imagen {{ r.index }}" loading="lazy">
+        <span class="frame-tag">{{ r.index }}</span>
+      </button>
+      {% endfor %}
+    </div>
+
+    {# El quemado fuera de la película, igual que en el análisis simple: ver
+       la nota larga en results.html. `data-ov="idx"` se puede repetir sin
+       riesgo —viewer.js actualiza esa clave con `querySelectorAll`, no con
+       `querySelector`— y el pie de figura de abajo ya lo hacía. #}
+    <p class="plate-meta" aria-hidden="true">
+      <span><span class="ov-key">Estudio</span> <strong>{{ study_id }}</strong></span>
+      <span><span class="ov-key">Imagen</span> <span data-ov="idx">{{ first.index }}</span> / {{ total_images }}</span>
+      <span><span class="ov-key">Región</span> {{ anatomical_region }}</span>
+      <span><span class="ov-key">Modelo</span> {{ model_version or 'sin registrar' }}</span>
+    </p>
+
+  </section>
+
+  {# El único filete estructural de la página, y es vertical. #}
+  <div class="split" aria-hidden="true"></div>
+
+  <aside class="readout" data-find-host aria-label="Resultado por imagen"
+         data-boxes="{{ first.boxes_json }}"
+         data-abnormal-threshold="{{ abnormal_threshold }}">
+
+    <div class="seg" role="group" aria-label="Filtrar imágenes">
+      <button type="button" data-filter="all" aria-pressed="true">Todas <span class="count">{{ total_images }}</span></button>
+      <button type="button" data-filter="finding" aria-pressed="false">Con hallazgos <span class="count">{{ images_with_findings }}</span></button>
+      <button type="button" data-filter="clean" aria-pressed="false">Sin hallazgos <span class="count">{{ sin_hallazgos }}</span></button>
+    </div>
+    <p class="field-hint" data-filter-msg hidden></p>
+
+    {% for r in results %}
+    {# La clave real es `is_abnormal`. La plantilla original leía
+       `r.has_finding`, que no existe en ningún archivo Python: Jinja lo
+       resolvía a Undefined (falsy) y TODAS las tarjetas salían "Normal". #}
+    {% set nivel = 'LOW' if out_of_domain else r.urgency.nivel %}
+    <div class="panel-img" data-panel-idx="{{ r.index }}" {% if r.index != initial_index %}hidden{% endif %}>
+
+      {# Sin cabecera propia: qué imagen se está viendo ya lo dicen el
+         sobreimpreso de la placa y la miniatura marcada en la tira. Y la
+         insignia "sin hallazgos" repetía la palabra del veredicto que va
+         justo abajo. #}
+      <div class="triage {{ m.verdict_class(nivel) }}">
+        {# De QUÉ imagen habla este veredicto. Sin decirlo se lee como el del
+           estudio entero, que es el que está arriba en la barra. #}
+        <p class="eyebrow">Imagen {{ r.index }} de {{ total_images }}</p>
+        {{ m.urgency_rule(nivel, neutro=out_of_domain) }}
+        <p class="verdict-word">{{ m.verdict_word(nivel) }}</p>
+        <p class="verdict-sub">
+          {%- if out_of_domain -%}
+            Clasificación heredada de un modelo retirado.
+          {%- else -%}
+            {{ m.verdict_sub(nivel, abnormal_threshold) }}
+          {%- endif -%}
+        </p>
+
+        {{ m.scope_line(r.is_abnormal) }}
+      </div>
+
+      <hr class="rule">
+
+      <div class="finds">
+        <div class="find-head">
+          <h2 class="finds-title">Zonas marcadas</h2>
+          <span class="find-count"><span class="num">{{ r.significant_count }}</span> sobre el {{ m.corte_nombre() }}</span>
+        </div>
+        {# Misma razón que en results.html: el rótulo que dice qué es este
+           número va a la vista.
+           El corte es el que dibuja la marca en cada barra. #}
+        {{ m.find_unit(abnormal_threshold) }}
+        {% if r.boxes %}
+        <div class="find-list" data-find-list>
+          {% for b in r.boxes %}
+          {{ m.finding_row(loop.index0, b.confidence, abnormal_threshold) }}
+          {% endfor %}
+        </div>
+        <p class="find-hint" data-find-hint hidden>
+          <kbd>N</kbd> siguiente · <kbd>P</kbd> anterior · <kbd>Esc</kbd> soltar
+        </p>
+        {% endif %}
+      </div>
+
+      {{ m.alcance_clinico(model_sensitivity, dominio_label) }}
+
+      <details class="quiet">
+        <summary>{{ m.icon('chevron', 'chev') }}
+          <span>Detalle técnico</span>
+          <span class="fold-m"><span class="num">{{ "%.0f"|format(r.inference_time_ms) }}</span> ms</span>
+        </summary>
+        <div class="quiet-body">
+          <dl class="kv">
+            <dt>Archivo</dt><dd style="word-break:break-all;">{{ r.source_filename }}</dd>
+            <dt>Sobre el {{ m.corte_nombre() }}</dt><dd>{{ r.significant_count }}</dd>
+            <dt>Baja confianza</dt><dd>{{ r.low_confidence_count }}</dd>
+            <dt>Score crudo máx.</dt><dd>{{ m.conf_display(r.max_detection_confidence, r.significant_count) }}</dd>
+            <dt>Inferencia</dt><dd>{{ "%.0f"|format(r.inference_time_ms) }} ms</dd>
+          </dl>
+          {% if r.analysis_id %}
+          <div class="actions-bar" style="margin-top:var(--s-4);">
+            <a href="/analysis/{{ r.analysis_id }}/results" class="btn btn-sm btn-secondary">Abrir análisis completo</a>
+          </div>
+          {% endif %}
+        </div>
+      </details>
+    </div>
+    {% endfor %}
+
+    <div class="rd-actions">
+      <a href="/analysis/upload" class="btn btn-sm btn-secondary">{{ m.icon('upload') }} Nuevo análisis</a>
+      <a href="/analysis/history" class="btn btn-sm btn-secondary">Historial</a>
+    </div>
+  </aside>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* La franja de veredicto del visor espeja el panel abierto.
+
+   viewer.js ya decide cuál lo está: alterna el atributo `hidden` de los
+   `[data-panel-idx]`. Acá sólo se replica esa decisión sobre las franjas.
+
+   Las franjas NO usan `data-panel-idx` a propósito: viewer.js toma el
+   PRIMER `[data-panel-idx]` sin `hidden` como ámbito para resaltar los
+   hallazgos, y las franjas —que van antes en el documento— se lo robarían,
+   rompiendo el vínculo hallazgo↔caja. Por eso `data-strip-idx` y este
+   espejo de seis líneas, en vez de tocar viewer.js. */
+(function () {
+  var franjas = document.querySelectorAll('[data-strip-idx]');
+  if (!franjas.length) return;
+  var paneles = document.querySelectorAll('[data-panel-idx]');
+  if (!paneles.length) return;
+
+  function espejar() {
+    var abierto = document.querySelector('[data-panel-idx]:not([hidden])');
+    var idx = abierto ? abierto.dataset.panelIdx : null;
+    franjas.forEach(function (f) { f.hidden = f.dataset.stripIdx !== idx; });
+  }
+
+  var obs = new MutationObserver(espejar);
+  paneles.forEach(function (p) {
+    obs.observe(p, { attributes: true, attributeFilter: ['hidden'] });
+  });
+  espejar();
+})();
+
+/* Filtro de la tira de imágenes. El filtro usaba el mismo dato roto que las
+   tarjetas, así que "Con hallazgos (1)" mostraba cero resultados. */
+(function () {
+  var strip = document.querySelector('[data-filmstrip]');
+  if (!strip) return;
+  var msg = document.querySelector('[data-filter-msg]');
+  var botones = document.querySelectorAll('[data-filter]');
+
+  botones.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var tipo = btn.dataset.filter;
+      botones.forEach(function (b) { b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'); });
+
+      var visibles = 0, primero = null;
+      strip.querySelectorAll('.frame').forEach(function (f) {
+        var tiene = f.dataset.finding === 'true';
+        var mostrar = tipo === 'all' || (tipo === 'finding' ? tiene : !tiene);
+        f.hidden = !mostrar;
+        if (mostrar) { visibles++; if (!primero) primero = f; }
+      });
+
+      if (visibles === 0) {
+        msg.hidden = false;
+        msg.textContent = tipo === 'finding'
+          ? 'Ninguna imagen de este estudio superó el umbral de anormalidad.'
+          : 'Todas las imágenes de este estudio tienen hallazgos.';
+      } else {
+        msg.hidden = true;
+        /* Si la imagen abierta quedó filtrada, se abre la primera visible. */
+        var actual = strip.querySelector('.frame[aria-current="true"]');
+        if (!actual || actual.hidden) primero.click();
+      }
+    });
+  });
+})();
+</script>
+{% endblock %}

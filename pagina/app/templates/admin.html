@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+
+{% block title %}Administración · {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Administración</h1>
+    <p class="page-header-sub">Vista global del sistema — la única pantalla que cruza datos de todas las cuentas</p>
+  </div>
+  <div class="page-header-actions">
+    <a href="/admin/export/analisis.csv" class="btn btn-sm btn-secondary">Exportar análisis (CSV)</a>
+    <a href="/admin/export/opiniones.csv" class="btn btn-sm btn-secondary">Exportar opiniones (CSV)</a>
+  </div>
+</div>
+
+<!-- ═══ Totales del sistema ═══
+     Sin tarjetas: cifras sobre reglas de 1 px, la misma gramática que la
+     pantalla de métricas. Ocho cajas idénticas no jerarquizaban nada — el
+     ojo terminaba contando rectángulos en vez de leer los números. -->
+<section class="metrics-section">
+  <div class="metrics-head">
+    <span class="eyebrow">Sistema completo</span>
+    <span class="metrics-head-note">cruza datos de todas las cuentas</span>
+  </div>
+  <div class="figs">
+    <div class="fig">
+      <span class="fig-v">{{ global.analisis }}</span>
+      <span class="fig-l">Análisis totales</span>
+      <span class="fig-n">{{ global.recientes_30d }} en los últimos 30 días</span>
+    </div>
+    <div class="fig">
+      <span class="fig-v">{{ global.anormales }}</span>
+      <span class="fig-l">Con hallazgo</span>
+      {# La proporción sobre el total pasa por la misma macro que el resto:
+         sin muestra suficiente se ve el recuento, no un porcentaje. #}
+      <span class="fig-n">{% if global.anormal.total %}{{ m.tasa_celda(global.anormal) }} del total{% endif %}</span>
+    </div>
+    {{ m.tasa_fig(global.acuerdo, 'Acuerdo médico e IA', 'opiniones registradas') }}
+    <div class="fig">
+      <span class="fig-v">{{ global.desacuerdos }}</span>
+      <span class="fig-l">Desacuerdos</span>
+      <span class="fig-n">Candidatos a reanotación para el reentrenamiento</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ Por usuario ═══ -->
+<section class="metrics-section">
+  <div class="metrics-head">
+    <span class="eyebrow">Actividad por usuario</span>
+    <span class="metrics-head-note">describe la casuística de cada práctica, no el rendimiento del modelo</span>
+  </div>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Usuario</th>
+        <th class="num">Análisis</th>
+        <th class="num">% con hallazgo</th>
+        <th class="num">Opiniones</th>
+        <th class="num">% acuerdo</th>
+        <th>Última actividad</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in filas %}
+      <tr>
+        <td>
+          {{ f.nombre }}{% if f.es_admin %} <span class="nav-user-tag">admin</span>{% endif %}
+          <p class="field-hint" style="margin-top:2px;">{{ f.email }}</p>
+        </td>
+        <td class="num">{{ f.analisis }}</td>
+        <td class="num">{{ m.tasa_celda(f.anormal) }}</td>
+        <td class="num">{{ f.feedbacks }}</td>
+        <td class="num">{{ m.tasa_celda(f.acuerdo) }}</td>
+        <td class="muted">
+          {% if f.ultima_actividad %}{{ f.ultima_actividad|fecha }}{% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="field-hint" style="margin-top:var(--s-2);">
+  Menos de {{ n_minimo }} casos: se informa el recuento (parte/total), no el porcentaje. Es la misma regla que en Métricas.
+</p>
+</section>
+
+<!-- ═══ Modelo en producción ═══ -->
+{% set meta = model_metadata.get('muneca_pediatrica') %}
+{% if meta %}
+{# La fecha de medición NO es una cifra: puesta en el mismo hueco tipográfico
+   que un número —mono, tamaño de display, columna angosta— «2026-08-24» se
+   partía en dos renglones dentro de su tarjeta. Va donde ya va en la
+   pantalla de métricas: como dato del encabezado, no como figura. #}
+<section class="metrics-section">
+  <div class="metrics-head">
+    <span class="eyebrow">Modelo en producción</span>
+    <span class="metrics-head-note">medido {{ meta.metrics_date }} · test n={{ meta.test_n }}, separado por paciente</span>
+  </div>
+  <div class="figs">
+    <div class="fig">
+      <span class="fig-v">{{ ("%.3f"|format(meta.sensibilidad))|replace('.', ',') }}</span>
+      <span class="fig-l">Sensibilidad</span>
+      <span class="fig-n">Nivel imagen, punto de operación real</span>
+    </div>
+    <div class="fig">
+      <span class="fig-v">{{ ("%.3f"|format(meta.especificidad))|replace('.', ',') }}</span>
+      <span class="fig-l">Especificidad</span>
+    </div>
+    <div class="fig">
+      <span class="fig-v">{{ ("%.4f"|format(meta.mAP50))|replace('.', ',') }}</span>
+      <span class="fig-l">mAP50</span>
+    </div>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

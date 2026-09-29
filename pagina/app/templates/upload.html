@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+
+{% block title %}Cargar estudio · {{ app_name }}{% endblock %}
+
+{% block head %}
+<script defer src="/static/js/upload.js?v=4"></script>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Cargar estudio</h1>
+    <p class="page-header-sub">Detección de fracturas en radiografía de muñeca pediátrica</p>
+  </div>
+</div>
+
+{% if error %}
+<div class="alert alert-error">
+  {{ m.icon('alert') }}<div>{{ error }}</div>
+</div>
+{% endif %}
+
+<div class="upload-tabs" role="tablist" aria-label="Tipo de carga">
+  <button type="button" class="upload-tab" data-tab="single" role="tab" aria-selected="true">
+    Imagen individual
+  </button>
+  <button type="button" class="upload-tab" data-tab="study" role="tab" aria-selected="false">
+    Estudio completo (ZIP)
+  </button>
+</div>
+
+<!-- ══════ Imagen individual ══════ -->
+<div data-panel-tab="single">
+  <form action="/analysis/upload" method="post" enctype="multipart/form-data" id="upload-form-single">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <div class="dropzone" data-dropzone data-chosen="chosen-single">
+      <div class="dropzone-icon">{{ m.icon('upload') }}</div>
+      <p class="dropzone-text">Arrastrá la radiografía acá, o hacé clic para elegirla</p>
+      <p class="dropzone-hint">JPEG, PNG, BMP, TIFF o DICOM (.dcm) · hasta {{ max_size_mb }} MB</p>
+      <input type="file" name="file" id="file-input-single" accept="image/*,.dcm" required
+             aria-label="Elegir la radiografía a analizar">
+    </div>
+
+    <div class="file-chosen" id="chosen-single">
+      <img class="file-thumb" data-file-thumb alt="" hidden>
+      <div class="file-meta">
+        <div class="file-name" data-file-name></div>
+        <div class="file-size" data-file-size></div>
+      </div>
+      <span class="badge badge-accent">Lista para analizar</span>
+    </div>
+
+    <div class="field-group">
+      <span class="field-label">Región anatómica</span>
+
+      <div class="region-cards">
+        {% for key, meta in model_metadata.items() %}
+        <button type="button" class="region-card"
+                data-region-card data-region="{{ key }}" data-panel="single"
+                aria-pressed="{{ 'true' if loop.first else 'false' }}"
+                {% if not meta.available %}disabled{% endif %}>
+          <span class="region-card-icon">{{ m.icon('bone') }}</span>
+          <span class="region-card-body">
+            <span class="region-card-label">{{ meta.label }}</span>
+            {# Arriba, el badge LLANO: si el modelo está probado o no. El
+               número exacto (mAP50, recall, precisión) no se borra —vive un
+               clic abajo, en «¿De dónde salen estos números?». #}
+            <span class="region-card-badges">
+              {% if meta.mAP50 is none %}
+              <span class="badge badge-caution">Entrenamiento pendiente</span>
+              {% else %}
+              <span class="badge badge-quiet">Probado con casos reales</span>
+              {% endif %}
+              {% if not meta.available %}
+              <span class="badge badge-neutral">No disponible</span>
+              {% endif %}
+            </span>
+          </span>
+        </button>
+        {% endfor %}
+      </div>
+
+      {# LA PROCEDENCIA, PLEGADA. Estaba suelta debajo de cada tarjeta y era
+         ruido en la pantalla de carga; borrarla no era la solución, porque
+         es material de defensa. Baja un nivel de jerarquía y se queda
+         entera. Ningún número está escrito a mano: todos salen de
+         MODEL_METADATA. #}
+      <details class="quiet">
+        <summary>{{ m.icon('chevron', 'chev') }}
+          <span>¿De dónde salen estos números?</span>
+        </summary>
+        <div class="quiet-body stack">
+          <p class="field-hint" style="margin-top:0;">
+            Cada modelo se entrenó con un conjunto de radiografías propio. Fuera de
+            esa región del cuerpo, su comportamiento no está validado.
+          </p>
+          {% for key, meta in model_metadata.items() %}
+          <div>
+            <span class="eyebrow">{{ meta.label }}</span>
+            <p class="field-hint" style="margin-top:0;">{{ meta.description }}</p>
+            {% if meta.mAP50 is not none %}
+            <dl class="kv">
+              <dt>mAP50</dt><dd>{{ ("%.3f"|format(meta.mAP50))|replace('.', ',') }}</dd>
+              <dt>Recall</dt><dd>{{ ("%.3f"|format(meta.recall))|replace('.', ',') }}</dd>
+              <dt>Precisión</dt><dd>{{ ("%.3f"|format(meta.precision))|replace('.', ',') }}</dd>
+            </dl>
+            <p class="metrics-provenance">
+              Medido sobre el conjunto de prueba ({{ meta.test_n }} radiografías) el {{ meta.metrics_date }}.
+              Son métricas de detección del modelo, no de rendimiento clínico.
+            </p>
+            {% else %}
+            <p class="metrics-provenance">Todavía sin medición: el modelo no se entrenó.</p>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </details>
+
+      <input type="hidden" name="region" id="region-input-single"
+             value="{{ (model_metadata.keys()|list)[0] }}">
+    </div>
+
+    <button type="submit" class="btn btn-primary">Analizar radiografía</button>
+  </form>
+</div>
+
+<!-- ══════ Estudio ZIP ══════ -->
+<div data-panel-tab="study" hidden>
+  <form action="/analysis/upload-study" method="post" enctype="multipart/form-data" id="upload-form-study">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <div class="dropzone" data-dropzone data-chosen="chosen-study">
+      <div class="dropzone-icon">{{ m.icon('archive') }}</div>
+      <p class="dropzone-text">Arrastrá el ZIP del estudio acá, o hacé clic para elegirlo</p>
+      <p class="dropzone-hint">Archivo .zip con los DICOM del estudio · hasta {{ max_zip_mb }} MB</p>
+      <input type="file" name="file" id="file-input-study" accept=".zip,application/zip" required
+             aria-label="Elegir el ZIP del estudio">
+    </div>
+
+    <div class="file-chosen" id="chosen-study">
+      <img class="file-thumb" data-file-thumb alt="" hidden>
+      <div class="file-meta">
+        <div class="file-name" data-file-name></div>
+        <div class="file-size" data-file-size></div>
+      </div>
+      <span class="badge badge-accent">Listo para analizar</span>
+    </div>
+
+    <input type="hidden" name="region" id="region-input-study"
+           value="{{ (model_metadata.keys()|list)[0] }}">
+    <p class="field-hint" style="margin-bottom:var(--s-4);">
+      Se analiza con el modelo
+      <strong>{{ (model_metadata.values()|list)[0].label }}</strong>.
+      Los equipos de RX exportan los estudios como carpeta comprimida: subí ese ZIP.
+    </p>
+
+    <button type="submit" class="btn btn-primary">Analizar estudio completo</button>
+  </form>
+</div>
+
+<div class="info-card">
+  <h3>Cuándo usar cada modo</h3>
+  <ul>
+    <li><strong>Imagen individual:</strong> una placa en JPEG, PNG o DICOM.</li>
+    <li><strong>Estudio completo:</strong> la carpeta comprimida con varios .dcm que descarga del sistema del hospital.</li>
+  </ul>
+</div>
+
+<!-- Overlay de progreso.
+     La placa muestra la imagen que el usuario acaba de entregar, con la banda
+     de lectura recorriéndola. No hay porcentaje ni barra que se llene: el
+     backend no reporta progreso y fingirlo sería inventar estado del sistema.
+     Lo único cuantitativo acá es el cronómetro, y es real. -->
+<div id="progress-overlay" class="progress-overlay" role="status" aria-live="polite">
+  <div class="progress-box">
+    <div class="scanplate" data-scanplate aria-hidden="true">
+      <img class="scanplate-img" data-progress-thumb alt="" hidden>
+      <span class="scanplate-grid"></span>
+      <span class="scanplate-band"></span>
+      <span class="scanplate-mark tl"></span>
+      <span class="scanplate-mark tr"></span>
+      <span class="scanplate-mark bl"></span>
+      <span class="scanplate-mark br"></span>
+    </div>
+    <p class="progress-title" id="progress-title">Analizando la radiografía</p>
+    <p class="progress-detail" id="progress-detail">
+      El modelo tarda unos segundos en CPU. No cierres ni recargues esta página.
+    </p>
+    {# aria-live="off" a propósito: este párrafo vive dentro de una región
+       role="status" y el cronómetro cambia una vez por segundo. Sin esto, un
+       lector de pantalla anunciaría el número cada segundo durante todo el
+       análisis. El aviso ("Analizando la radiografía…") se anuncia una vez;
+       el cronómetro queda para leerlo cuando se quiera. #}
+    <p class="progress-elapsed" aria-live="off">
+      <span class="progress-state">En proceso</span> ·
+      <span class="num" id="progress-seconds">0</span> s transcurridos
+    </p>
+  </div>
+</div>
+{% endblock %}

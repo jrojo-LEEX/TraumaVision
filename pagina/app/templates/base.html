@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light">
+    <title>{% block title %}{{ app_name }}{% endblock %}</title>
+    {# ?v= fuerza al navegador a tomar la hoja nueva. Sin esto, quien ya abrió
+       la app sigue viendo la versión cacheada del rediseño anterior. #}
+    <link rel="icon" href="/static/favicon.svg?v=3" type="image/svg+xml">
+    {# Se precargan las DOS fuentes que pinta el primer cuadro de la pantalla
+       de lectura: Montserrat 800 es el veredicto e Inter 400 es el cuerpo y
+       el quemado de la placa. Las dos van con `font-display: block`, así que
+       precargarlas es lo que evita que ese bloqueo se note.
+       (Acá se precargaba IBM Plex Mono, que salió del sistema: KIBBO no
+       admite una tercera familia y el registro técnico lo resuelve Inter con
+       numerales tabulares.) #}
+    <link rel="preload" href="/static/fonts/montserrat-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/static/fonts/inter-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/static/css/style.css?v=28">
+    {# GSAP, VENDORIZADO. Mismo motivo que las fuentes de arriba y que
+       chart.umd.js: la defensa puede ser en un aula sin internet, y un
+       `<script src="https://cdn...">` que no resuelve deja la aplicación sin
+       la lectura de la placa delante del tribunal. Los dos archivos, su
+       versión y sus sumas de verificación están documentados en
+       `/static/js/gsap-LICENCIA.txt`.
+
+       Van `defer` y en este orden: ScrollTrigger necesita el núcleo, y
+       motion.js necesita a los dos. `defer` además garantiza que se ejecuten
+       en orden de documento y con el DOM ya armado.
+
+       Si cualquiera de los tres faltara, la aplicación queda ENTERA:
+       motion.js se sale en silencio en su primera línea si no encuentra
+       GSAP, y ningún elemento está escondido por la hoja esperando que el JS
+       lo destape. #}
+    <script defer src="/static/js/gsap-gsap.min.js?v=3.13.0"></script>
+    <script defer src="/static/js/gsap-ScrollTrigger.min.js?v=3.13.0"></script>
+    <script defer src="/static/js/motion.js?v=2"></script>
+    {% block head %}{% endblock %}
+</head>
+<body>
+    {# Enlace de salto (WCAG 2.4.1, nivel A). Es el PRIMER hijo del body para
+       que sea lo primero que recibe el foco con Tab: quien navega con teclado
+       o lector de pantalla no tiene que atravesar la barra entera en cada
+       pantalla para llegar al contenido. Sólo se ve con foco de teclado
+       (`.skip-link` en style.css). #}
+    <a class="skip-link" href="#contenido">Saltar al contenido</a>
+    {% set path = request.url.path if request else '' %}
+    <nav class="navbar">
+        {# Membrete. El ícono del hueso vivía dentro de una cajita rellena de
+           azul: un objeto que no se puede tocar, pintado con el color que en
+           esta app significa "interacción". Se fue, y la marca quedó sola
+           como palabra. La procedencia académica va al lado, separada por el
+           único filete de la barra, que es VERTICAL. #}
+        <div class="nav-brand">
+            <a href="/">{{ app_name }}</a>
+        </div>
+        {% if current_user %}
+        <div class="nav-links">
+            <a href="/analysis/upload" {% if path.startswith('/analysis/upload') %}class="active" aria-current="page"{% endif %}>Nuevo análisis</a>
+            <a href="/analysis/history" {% if path.startswith('/analysis/history') %}class="active" aria-current="page"{% endif %}>Historial</a>
+            <a href="/dashboard" {% if path.startswith('/dashboard') %}class="active" aria-current="page"{% endif %}>Métricas</a>
+            {% if current_user.is_admin %}
+            <a href="/admin" {% if path.startswith('/admin') %}class="active" aria-current="page"{% endif %}>Administración</a>
+            {% endif %}
+            <a href="/aviso-legal" {% if path.startswith('/aviso-legal') %}class="active" aria-current="page"{% endif %}>Alcance</a>
+        </div>
+        <div class="nav-user">
+            <span class="nav-user-name" title="{{ current_user.email }}">
+                {{ current_user.name }}{% if current_user.is_admin %} <span class="nav-user-tag">admin</span>{% endif %}
+            </span>
+            <form action="/logout" method="post" class="nav-logout-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="btn btn-sm btn-secondary">Salir</button>
+            </form>
+        </div>
+        {% endif %}
+    </nav>
+
+    {# `tabindex="-1"`: destino del enlace de salto. Sin él, algunos
+       navegadores mueven el scroll pero no el foco, y el siguiente Tab vuelve
+       a empezar por la barra. No entra en el orden de tabulación normal. #}
+    <main id="contenido" tabindex="-1" class="{% block main_class %}container{% endblock %}">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <div class="footer-inner">
+            {# Salvedad legal en todas las pantallas. Sale de LEGAL_DISCLAIMER
+               (config/settings.py), nunca escrita a mano acá. Es regla de
+               cuadro cero: se lee sin abrir nada y sin esperar movimiento. #}
+            {% if disclaimer %}<p class="disclaimer">{{ disclaimer }}</p>{% endif %}
+            <p class="footer-text">
+                {{ app_name }} · Tesis de Ingeniería Biomédica, UNC
+                · <a href="/aviso-legal">Alcance y limitaciones</a>
+            </p>
+        </div>
+    </footer>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

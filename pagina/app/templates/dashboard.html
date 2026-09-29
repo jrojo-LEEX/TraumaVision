@@ -1,0 +1,503 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+
+{% block title %}Métricas · {{ app_name }}{% endblock %}
+
+{% block head %}
+{# Chart.js local: en la sala de defensa puede no haber internet, y desde el
+   CDN el dashboard quedaba en blanco. #}
+<script defer src="/static/js/chart.umd.js"></script>
+{% endblock %}
+
+{% block content %}
+{% set meta = model_metadata.get('muneca_pediatrica') %}
+{% set c = concordancia %}
+{% set p = practica %}
+{% set sys = sistema %}
+
+{# ──────────────────────────────────────────────────────────────────────
+   MÉTRICAS — reescrita entera el 31/08/2026.
+
+   La versión anterior contestaba preguntas de ingeniería: mAP, ECE, la
+   distribución de scores crudos. Todas ciertas, ninguna es la pregunta que
+   hace un médico frente a esta pantalla. Un médico pregunta cuatro cosas:
+
+     1. ¿En qué coincido y en qué no con el sistema? Y de los desacuerdos,
+        ¿cuál me puede costar caro?
+     2. ¿Cuánto usé esto, y qué me encontró?
+     3. ¿Anda bien? ¿Cuánto tarda? ¿Con qué modelo estoy trabajando?
+     4. ¿Qué tan bueno es, medido en serio y por fuera de mi práctica?
+
+   Ése es el orden de la pantalla, y es deliberado: lo propio primero, la
+   evidencia externa después. Al revés, la sección que el médico puede
+   accionar quedaba debajo de tres gráficos que no dependen de él.
+
+   DOS COSAS QUE NO SE MEZCLAN, y por eso viven en secciones distintas con
+   rótulos distintos:
+     · ACUERDO (secciones 1 y 2) — el sistema contra la lectura del médico.
+       El médico no es patrón de oro: acá un desacuerdo es un desacuerdo,
+       nunca un error probado.
+     · RENDIMIENTO (sección 4) — el modelo contra el test anotado. Eso sí
+       está medido contra verdad, y por eso es lo único que se puede llamar
+       sensibilidad o especificidad.
+   Confundirlas sería publicar una sensibilidad de sala que nadie midió.
+
+   Ningún número de esta pantalla está escrito a mano. Los de práctica salen
+   de la base; los de rendimiento, de MODEL_METADATA; los umbrales que
+   parten las franjas, de config/settings.py.
+   ────────────────────────────────────────────────────────────────────── #}
+
+<header class="dash-hero">
+  <div class="dash-hero-main">
+    <span class="dash-hero-eyebrow">Tu práctica con el sistema</span>
+    <h1 class="dash-hero-title">Métricas</h1>
+    <p class="dash-hero-sub">
+      Dónde coincidís con el sistema, dónde no, cuánto lo usaste y qué tan
+      bien anda.
+    </p>
+  </div>
+  <div class="dash-hero-side">
+    {% if meta %}
+    <div class="dash-hero-prov">
+      <span class="dash-hero-model">{{ meta.label }}</span>
+      <span class="dash-hero-desc">{{ meta.description }}</span>
+      <span class="dash-hero-date">medido <span class="num">{{ meta.metrics_date }}</span></span>
+    </div>
+    {% endif %}
+    <div class="dash-hero-actions">
+      <a href="/dashboard/export/analisis.csv" class="btn btn-sm btn-on-dark">{{ m.icon('file') }} Análisis (CSV)</a>
+      <a href="/dashboard/export/opiniones.csv" class="btn btn-sm btn-on-dark">{{ m.icon('file') }} Opiniones (CSV)</a>
+    </div>
+  </div>
+</header>
+
+<!-- ══════════ 1. ACUERDO ══════════════════════════════════════════════
+     La sección primaria. Todo lo de acá sale de las opiniones cargadas por
+     el médico, y por eso lo primero que se declara es CUÁNTAS son: una tasa
+     de acuerdo sin su cobertura describe los casos que alguien se tomó el
+     trabajo de revisar, que no son una muestra al azar de la práctica. -->
+<section class="mx" aria-labelledby="ac-t">
+  <div class="mx-head">
+    <div>
+      <h2 class="mx-title" id="ac-t">Tu acuerdo con el sistema</h2>
+      <p class="mx-lead">
+        Sale de las opiniones que cargaste al pie de cada informe. Mide
+        <strong>coincidencia</strong>, no acierto: tu lectura no está
+        verificada contra nada, así que un desacuerdo señala dónde mirar, no
+        quién tuvo razón.
+      </p>
+    </div>
+    {% if c.total %}
+    <span class="mx-cover">
+      revisaste <span class="num">{{ c.n }}</span> de <span class="num">{{ c.total }}</span>
+      {%- if c.cobertura.total %} · <span class="num">{{ (c.cobertura.tasa * 100)|round|int }}</span>&nbsp;%{% endif %}
+    </span>
+    {% endif %}
+  </div>
+
+  {% if c.n == 0 %}
+  <div class="mx-empty">
+    <p><strong>Todavía no cargaste ninguna opinión.</strong></p>
+    <p>Al pie de cada informe hay dos botones —«De acuerdo» y «En
+      desacuerdo»— y un campo para el diagnóstico correcto. En cuanto haya
+      opiniones cargadas, acá aparece dónde coincidís con el sistema y dónde
+      no.</p>
+    {% if c.total %}
+    <a href="/analysis/history" class="btn btn-sm btn-secondary">Ir al historial</a>
+    {% endif %}
+  </div>
+  {% else %}
+
+  <div class="mx-grid">
+    <div class="card mx-card mx-quad">
+      <span class="card-title">Cómo se reparten tus revisiones</span>
+      {{ m.cuadrante(c) }}
+      {% if c.cuadrante.limpio_no %}
+      {# La celda cara, dicha con palabras. No es una alarma: con recall
+         0,866 este caso EXISTE por diseño, y el sistema lo declara en todas
+         sus pantallas. Acá se cuenta, que es la forma útil de decirlo. #}
+      <p class="mx-flag">
+        {{ m.icon('alert') }}
+        <span><strong>{{ c.cuadrante.limpio_no }}
+          {{ 'vez' if c.cuadrante.limpio_no == 1 else 'veces' }}</strong>
+          marcaste algo donde el sistema no marcó nada. Es el modo de falla
+          que el sistema no puede descartar: un informe sin hallazgos nunca
+          descarta fractura.</span>
+      </p>
+      {% endif %}
+    </div>
+
+    <div class="card mx-card mx-kpis">
+      {{ m.tasa_grande(c.general, 'Coincidencia general') }}
+      {{ m.tasa_grande(c.cuando_marco, 'Cuando el sistema marcó una zona',
+                       'de esos casos, cuántos confirmaste') }}
+      {{ m.tasa_grande(c.cuando_no_marco, 'Cuando el sistema no marcó nada',
+                       'de esos casos, cuántos diste por limpios') }}
+    </div>
+  </div>
+
+  <!-- ══════════ 2. DÓNDE NO COINCIDEN ══════════
+       El acuerdo global es un promedio y los promedios esconden. Estas dos
+       aperturas contestan la pregunta accionable: en qué tipo de caso el
+       sistema y el médico se separan. -->
+  <div class="mx-grid mx-grid-2">
+    {% if c.por_triage %}
+    <div class="card mx-card">
+      <span class="card-title">Acuerdo por veredicto del sistema</span>
+      <p class="mx-note">Qué tan seguido confirmás cada nivel de triage.</p>
+      <div class="sg-list">
+        {% for it in c.por_triage %}{{ m.segmento(it) }}{% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if c.por_franja %}
+    <div class="card mx-card">
+      <span class="card-title">Acuerdo por seguridad del detector</span>
+      <p class="mx-note">
+        La franja del medio es la zona de duda: el sistema marcó algo pero
+        por debajo del corte de aviso
+        (<span class="num">{{ ("%.2f"|format(corte_aviso))|replace('.', ',') }}</span>).
+      </p>
+      <div class="sg-list">
+        {% for it in c.por_franja %}{{ m.segmento(it) }}{% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+
+<!-- ══════════ 3. TU PRÁCTICA ══════════════════════════════════════════
+     Cuánto usaste el sistema y qué te encontró. Describe TU CASUÍSTICA, no
+     el rendimiento del modelo: si tu muestra tiene muchas fracturas, el
+     sistema va a marcar mucho, y eso no lo hace mejor ni peor. -->
+<section class="mx" aria-labelledby="pr-t">
+  <div class="mx-head">
+    <div>
+      <h2 class="mx-title" id="pr-t">Tu práctica</h2>
+      <p class="mx-lead">Describe tu casuística y tu uso, no el rendimiento del modelo.</p>
+    </div>
+  </div>
+
+  <div class="card mx-card">
+    <div class="kpi-row">
+      {{ m.dato(p.total, '', 'Análisis realizados',
+                'desde ' ~ (p.primero.strftime('%d/%m/%Y') if p.primero else '—')) }}
+      {{ m.dato(p.en_ventana, '', 'En los últimos ' ~ p.ventana_dias ~ ' días') }}
+      {{ m.dato(p.dias_activos, '', 'Días con actividad',
+                (("%.1f"|format(p.por_dia_activo))|replace('.', ',')) ~ ' por día activo') }}
+      {{ m.dato(("%.1f"|format(p.zonas_por_estudio))|replace('.', ','), '', 'Zonas marcadas por estudio',
+                'máximo ' ~ p.zonas_max ~ ' en un estudio') }}
+    </div>
+
+    {% if p.total %}
+    <div class="mx-trend">
+      <span class="mx-trend-cap">últimos {{ p.ventana_dias }} días</span>
+      <div class="chart-box chart-box-trend"><canvas id="perDay"></canvas></div>
+    </div>
+    {% else %}
+    <div class="chart-empty chart-empty-trend">
+      {{ m.icon('chart') }}<span>Sin análisis todavía.</span>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="mx-grid mx-grid-2">
+    <div class="card mx-card">
+      <span class="card-title">Estudios por veredicto</span>
+      {% if p.total %}
+      <div class="chart-box chart-box-short"><canvas id="urgencias"></canvas></div>
+      {% else %}
+      <div class="chart-empty chart-empty-short">{{ m.icon('chart') }}<span>Sin análisis todavía.</span></div>
+      {% endif %}
+      <div class="mx-inline">
+        {{ m.prop_bar(p.marcados.parte, p.marcados.total, 'estudios con al menos una zona marcada', 'is-finding') }}
+      </div>
+    </div>
+
+    <div class="card mx-card">
+      <span class="card-title">Seguridad del detector en tus estudios</span>
+      {% if p.total %}
+      <div class="chart-box"><canvas id="confianzas"></canvas></div>
+      {% else %}
+      <div class="chart-empty">{{ m.icon('chart') }}<span>Sin análisis todavía.</span></div>
+      {% endif %}
+      <p class="mx-note">
+        Score crudo de la zona más segura de cada estudio.
+        <strong>No es una probabilidad de fractura.</strong> Por debajo de
+        <span class="num">{{ ("%.2f"|format(umbral_dibujo))|replace('.', ',') }}</span>
+        el sistema no dibuja nada.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ 4. EL SISTEMA ═══════════════════════════════════════════
+     Que ande. Tiempos reales medidos sobre tus propias inferencias, y con
+     qué modelo corrieron. -->
+<section class="mx" aria-labelledby="sy-t">
+  <div class="mx-head">
+    <div>
+      <h2 class="mx-title" id="sy-t">Cómo viene andando</h2>
+      <p class="mx-lead">Medido sobre tus análisis, no sobre un banco de pruebas.</p>
+    </div>
+  </div>
+
+  <div class="card mx-card">
+    <div class="kpi-row">
+      {{ m.dato(m.segundos(sys.mediana_ms), '', 'Tiempo típico de análisis',
+                'la mitad de tus estudios salió en menos') }}
+      {{ m.dato(m.segundos(sys.p95_ms), '', 'De los más lentos',
+                '19 de cada 20 salieron en menos') }}
+      {{ m.dato(sys.n, '', 'Análisis con tiempo medido') }}
+    </div>
+
+    {% if sys.versiones %}
+    <div class="mx-vers">
+      <span class="card-title">Modelo con el que corrieron</span>
+      <ul class="vers-list">
+        {% for v in sys.versiones %}
+        <li><code>{{ v.version }}</code><span class="num">{{ v.n }}</span>
+          {{ 'análisis' if v.n != 1 else 'análisis' }}</li>
+        {% endfor %}
+      </ul>
+      {% if sys.versiones|length > 1 %}
+      <p class="mx-note">Hay análisis de más de un modelo en tu historial: no
+        son comparables entre sí.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+<!-- ══════════ 5. RENDIMIENTO MEDIDO ═══════════════════════════════════
+     Lo único de esta pantalla medido contra verdad anotada, y por eso lo
+     único que se puede llamar sensibilidad. No es tu práctica: son 2.698
+     estudios de test que ningún usuario de esta app tocó. -->
+{% if meta %}
+<section class="mx" aria-labelledby="ev-t">
+  <div class="mx-head">
+    <div>
+      <h2 class="mx-title" id="ev-t">Qué tan bien acierta el sistema</h2>
+      <p class="mx-lead">
+        Medido contra casos ya diagnosticados por un médico, fuera de tu
+        práctica. Esto no cambia con tu uso.
+      </p>
+    </div>
+  </div>
+
+  <div class="ev-grid">
+    <div class="ev-metrics">
+      <span class="ev-card-label">Acierto a nivel estudio</span>
+      {{ m.metric_row('Detecta la fractura cuando existe', meta.sensibilidad, meta.sensibilidad_ic95, 'n ' ~ meta.test_n_positivos) }}
+      {{ m.metric_row('Descarta bien cuando no hay fractura', meta.especificidad, none, 'n ' ~ meta.test_n_negativos) }}
+      {{ m.metric_axis() }}
+    </div>
+
+    <div class="ev-waffle">
+      <span class="ev-card-label">Lo que se le escapa</span>
+      {{ m.waffle_misses(meta.recall) }}
+    </div>
+
+  </div>
+
+  {{ m.alcance_metricas(meta, meta.label, titulo='¿De dónde salen estos números?') }}
+</section>
+{% endif %}
+
+<!-- ══════════ 6. LO QUE CORREGISTE ════════════════════════════════════
+     Material de reentrenamiento, no lectura de guardia. El recuento va en
+     el rótulo: no hay que abrirlo para saber si hay algo adentro. -->
+{% if desacuerdos %}
+<details class="quiet dash-fold">
+  <summary>
+    {{ m.icon('chevron', 'chev') }}
+    <span>Casos donde corregiste al sistema</span>
+    <span class="fold-n">{{ desacuerdos|length }}</span>
+    <span class="fold-note">candidatos a reanotación</span>
+  </summary>
+  <div class="quiet-body">
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Estudio</th>
+            <th>Fecha</th>
+            <th>El sistema dijo</th>
+            <th>Tu diagnóstico</th>
+            <th class="sr-only">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in desacuerdos %}
+          <tr>
+            <td class="mono">#{{ d.analysis_id }}</td>
+            <td class="muted">{{ d.fecha.strftime('%d/%m/%Y') }}</td>
+            <td>
+              {% if d.es_anormal %}
+              <span class="badge badge-finding">Con hallazgo</span>
+              {% else %}
+              <span class="badge badge-neutral">Sin hallazgos</span>
+              {% endif %}
+            </td>
+            <td>
+              {{ d.diagnostico }}
+              {% if d.observaciones %}
+              <p class="field-hint" style="margin-top:2px;">{{ d.observaciones }}</p>
+              {% endif %}
+            </td>
+            <td><a href="/analysis/{{ d.analysis_id }}/results" class="btn btn-sm btn-secondary">Ver</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</details>
+{% else %}
+<p class="field-hint dash-none">No registraste ningún desacuerdo con el sistema todavía.</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+window.addEventListener('DOMContentLoaded', function () {
+  /* Si el archivo local no cargara, se avisa en vez de dejar un canvas mudo. */
+  if (typeof Chart === 'undefined') {
+    document.querySelectorAll('.chart-box').forEach(function (b) {
+      b.innerHTML = '<div class="chart-empty"><span>No se pudo cargar la librería de gráficos.</span></div>';
+    });
+    return;
+  }
+
+  var css = getComputedStyle(document.documentElement);
+  var tinta   = css.getPropertyValue('--text-3').trim();
+  var linea   = css.getPropertyValue('--line').trim();
+  var acento  = css.getPropertyValue('--accent').trim();
+  /* Los rellenos de gráfico usan los tokens de RELLENO, no los de texto:
+     una barra es un objeto gráfico y le debe 3:1, no 4,5:1. */
+  var cautela = css.getPropertyValue('--fill-caution').trim();
+
+  Chart.defaults.color = tinta;
+  Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
+  Chart.defaults.font.size = 11.5;
+  Chart.defaults.font.weight = 500;
+
+  Chart.defaults.plugins.tooltip.backgroundColor = css.getPropertyValue('--surface-3').trim();
+  Chart.defaults.plugins.tooltip.titleColor = css.getPropertyValue('--text').trim();
+  Chart.defaults.plugins.tooltip.bodyColor = css.getPropertyValue('--text-2').trim();
+  Chart.defaults.plugins.tooltip.borderColor = css.getPropertyValue('--line-2').trim();
+  Chart.defaults.plugins.tooltip.borderWidth = 1;
+  Chart.defaults.plugins.tooltip.cornerRadius = 14;
+  Chart.defaults.plugins.tooltip.titleFont = { family: "'Inter', system-ui, sans-serif", size: 12, weight: 500 };
+  Chart.defaults.plugins.tooltip.bodyFont = { family: "'Inter', system-ui, sans-serif", size: 12 };
+  Chart.defaults.plugins.tooltip.padding = 10;
+
+  /* ══════════════════════════════════════════════════════════════════════
+     NINGUNA BARRA SE ANIMA EN SU LARGO.
+     El largo de una barra ES la cantidad medida. Animarlo desde cero afirma,
+     durante los cuadros del recorrido, valores que el sistema no calculó, y
+     alcanza una captura de pantalla para impugnarlo. Las barras nacen a su
+     largo medido, en el primer cuadro; lo único que entra es el LIENZO,
+     fundido por motion.js. El razonamiento largo está en style.css.
+     ══════════════════════════════════════════════════════════════════════ */
+  Chart.defaults.animation = false;
+  Chart.defaults.animations = {};
+  /* `animations` vacío no alcanza en Chart.js 4: las transiciones con nombre
+     se resuelven por separado y `resize` vuelve a interpolar el largo cada
+     vez que cambia el ancho —que en una defensa proyectada pasa al conectar
+     el cable—. Se apagan las cuatro. */
+  Chart.defaults.transitions = {
+    active: { animation: { duration: 0 } },
+    resize: { animation: { duration: 0 } },
+    show:   { animations: {} },
+    hide:   { animations: {} }
+  };
+
+  function lienzo(id) { return document.getElementById(id); }
+
+  var elDia = lienzo('perDay');
+  if (elDia) {
+    var etiquetas = {{ per_day_labels|tojson }};
+    var valores   = {{ per_day_values|tojson }};
+    new Chart(elDia, {
+      type: 'bar',
+      data: {
+        labels: etiquetas.map(function (d) { return d.slice(8) + '/' + d.slice(5, 7); }),
+        datasets: [{
+          data: valores,
+          backgroundColor: acento,
+          borderRadius: 6,
+          borderWidth: 0,
+          maxBarThickness: 14
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        layout: { padding: { top: 2 } },
+        plugins: { legend: { display: false }, tooltip: { displayColors: false } },
+        scales: {
+          x: { grid: { display: false }, border: { color: linea },
+               ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6 } },
+          y: { beginAtZero: true, ticks: { precision: 0, maxTicksLimit: 4 },
+               grid: { color: linea, drawTicks: false }, border: { display: false } }
+        }
+      }
+    });
+  }
+
+  var elUrg = lienzo('urgencias');
+  if (elUrg) {
+    new Chart(elUrg, {
+      type: 'bar',
+      data: {
+        labels: {{ urgency_labels|tojson }},
+        datasets: [{
+          data: {{ urgency_values|tojson }},
+          /* Prioritario en color de hallazgo, Revisar en cautela y «Sin
+             hallazgos» en NEUTRO. No lleva el acento: el acento es el color
+             de la interacción, y pintarlo del mismo violeta que un botón lo
+             convertía en la categoría «buena» de la grilla. Con recall 0,866
+             un negativo no es un logro y no se festeja con color. */
+          backgroundColor: [css.getPropertyValue('--finding').trim(), cautela,
+                            css.getPropertyValue('--fill-quiet').trim()],
+          borderRadius: 6, borderWidth: 0, maxBarThickness: 34
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { displayColors: false } },
+        scales: {
+          x: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: linea, drawTicks: false }, border: { display: false } },
+          y: { grid: { display: false }, border: { color: linea } }
+        }
+      }
+    });
+  }
+
+  var elConf = lienzo('confianzas');
+  if (elConf) {
+    new Chart(elConf, {
+      type: 'bar',
+      data: {
+        labels: {{ conf_labels|tojson }},
+        datasets: [{ data: {{ conf_values|tojson }}, backgroundColor: acento,
+                     borderRadius: 6, borderWidth: 0 }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { displayColors: false } },
+        scales: {
+          x: { grid: { display: false }, border: { color: linea },
+               ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6 } },
+          y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: linea, drawTicks: false }, border: { display: false } }
+        }
+      }
+    });
+  }
+});
+</script>
+{% endblock %}

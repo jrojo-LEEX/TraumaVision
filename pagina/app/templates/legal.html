@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+
+{% block title %}Alcance y limitaciones · {{ app_name }}{% endblock %}
+
+{% block main_class %}container-narrow{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Alcance y limitaciones</h1>
+    <p class="page-header-sub">Qué hace este sistema, qué no hace, y con qué margen de error</p>
+  </div>
+</div>
+
+<div class="alert alert-caution">
+  {{ m.icon('alert') }}<div>{{ disclaimer }}</div>
+</div>
+
+<div class="card">
+  <p class="card-title">Qué hace</p>
+  <p>
+    {{ app_name }} es un <strong>sistema de soporte a la decisión clínica</strong>
+    desarrollado como proyecto integrador de Ingeniería Biomédica. Señala regiones de una
+    radiografía de muñeca pediátrica donde un modelo de detección encontró patrones
+    compatibles con fractura.
+  </p>
+  <p style="margin-top:var(--s-3);">
+    <strong>No emite diagnósticos.</strong> Todo resultado debe ser interpretado, validado
+    y aprobado por un médico matriculado.
+  </p>
+</div>
+
+<div class="card">
+  <p class="card-title">Limitaciones conocidas</p>
+  <ul class="legal-list">
+    <li>
+      <strong>Dominio acotado.</strong>
+      El modelo se entrenó con GRAZPEDWRI-DX: radiografías de <em>muñeca</em> de pacientes
+      de 0 a 17 años. Fuera de esa región y ese rango etario su comportamiento no está
+      validado. Los análisis guardados que provienen de modelos ya retirados se muestran
+      marcados como heredados y sin prioridad clínica.
+    </li>
+
+    <li>
+      <strong>La seguridad del detector no es una probabilidad.</strong>
+      El número que acompaña a cada zona marcada es el <em>score</em> del detector, su
+      salida interna post-NMS: sirve para ordenar las detecciones, pero no es una
+      probabilidad de fractura y no debe leerse como tal.
+    </li>
+
+    <li>
+      <strong>Los cortes de urgencia son operativos.</strong>
+      El corte de prioridad alta y el de revisión se aplican sobre el score del detector. Ordenan la revisión, no reemplazan el
+      criterio clínico.
+    </li>
+
+    {# «0,866» y «13 de cada 100» estaban escritos en la prosa. El mismo par
+       que el visor y el dashboard derivan de MODEL_METADATA desde el commit
+       a63d626; ésta era la última pantalla que lo afirmaba a mano, y es
+       justo la que define el alcance publicado del sistema. #}
+    <li>
+      <strong>Un negativo no descarta patología.</strong>
+      {% if meta and meta.recall is not none %}
+      El recall medido sobre el conjunto de prueba{% if meta.test_n %} ({{ meta.test_n }}
+      imágenes){% endif %} es {{ ("%.3f"|format(meta.recall))|replace('.', ',') }}:
+      aproximadamente {{ ((1 - meta.recall) * 100)|round|int }} de cada 100
+      fracturas anotadas no fueron detectadas.
+      {% else %}
+      El modelo en producción no tiene métricas publicadas en este sistema, así que
+      esta página no informa ninguna tasa de detección.
+      {% endif %}
+      Por eso un resultado sin hallazgos nunca se
+      presenta como un resultado normal confirmado.
+    </li>
+
+    <li>
+      <strong>Validación interna.</strong>
+      Las métricas provienen de la partición de prueba del mismo dataset de entrenamiento,
+      separada por paciente{% if meta and meta.metrics_date %}, medida el
+      {{ meta.metrics_date }}{% endif %}. No hay validación prospectiva ni multicéntrica.
+    </li>
+
+    <li>
+      <strong>No es un producto médico registrado.</strong>
+      No cuenta con aprobación de ANMAT ni de ninguna otra autoridad regulatoria.
+    </li>
+  </ul>
+</div>
+
+<div class="card">
+  <p class="card-title">Datos de los estudios</p>
+  <p>
+    Las imágenes DICOM se convierten descartando los metadatos del paciente, y los nombres
+    de archivo se enmascaran antes de guardarse. Cada usuario accede sólo a sus propios
+    estudios.
+  </p>
+  <p style="margin-top:var(--s-3);">
+    Aun así, esta es una <strong>instalación de demostración</strong>: no debe utilizarse
+    con estudios de pacientes reales identificables.
+  </p>
+</div>
+
+<div class="actions-bar">
+  <a href="/analysis/upload" class="btn btn-secondary">{{ m.icon('back') }} Volver</a>
+</div>
+{% endblock %}

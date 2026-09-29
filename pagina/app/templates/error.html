@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+
+{% block title %}{{ status_code }} · {{ app_name }}{% endblock %}
+
+{% block main_class %}error-shell{% endblock %}
+
+{% block content %}
+<div class="error-box">
+  <p class="error-code">{{ status_code }}</p>
+  <h1>{{ titulo }}</h1>
+  <p>{{ detalle }}</p>
+  <div class="actions-bar">
+    {% if current_user %}
+    <a href="/analysis/upload" class="btn btn-primary">Ir a cargar un estudio</a>
+    <a href="/analysis/history" class="btn btn-secondary">Ver el historial</a>
+    {% else %}
+    <a href="/login" class="btn btn-primary">Iniciar sesión</a>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
