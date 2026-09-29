@@ -17,6 +17,8 @@ python -m venv venv
 venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
+Los pesos del modelo están en la release `v1r`. Hay que bajar `best.pt` y copiarlo en `modelo/v1r/weights/`.
+
 Todos los scripts de `modelo/` y `datos/` se corren desde esta carpeta:
 
 ```
