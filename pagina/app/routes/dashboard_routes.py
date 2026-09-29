@@ -326,7 +326,7 @@ async def export_opiniones(
     user: User = Depends(require_user),
 ):
     """Las opiniones del usuario. Los desacuerdos son los candidatos a
-    reanotación del ciclo de reentrenamiento (scripts/exportar_reentrenamiento.py)."""
+    reanotación para un futuro reentrenamiento."""
     pares = (
         db.query(Feedback, Analysis)
         .join(Analysis, Feedback.analysis_id == Analysis.id)

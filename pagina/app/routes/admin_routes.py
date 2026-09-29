@@ -186,8 +186,8 @@ async def export_opiniones_global(
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> StreamingResponse:
-    """Todas las opiniones del sistema. Los desacuerdos alimentan el ciclo de
-    reentrenamiento (scripts/exportar_reentrenamiento.py)."""
+    """Todas las opiniones del sistema. Los desacuerdos alimentan un futuro
+    reentrenamiento."""
     consulta = (
         db.query(Feedback, Analysis, User.email)
         .join(Analysis, Feedback.analysis_id == Analysis.id)

@@ -6,7 +6,6 @@ build-backend = "setuptools.build_meta"
 name = "traumavision"
 version = "2.1.0"
 description = "Sistema de Soporte a la Decisión Clínica para detección de fracturas en muñeca pediátrica"
-readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Juan Pablo Rojo" }]
 
@@ -39,7 +38,7 @@ dev = ["pytest>=8.0.0", "pytest-asyncio>=0.23.0", "httpx>=0.27.0"]
 # Eso es lo que reemplaza a los sys.path.insert que había en cada módulo.
 [tool.setuptools.packages.find]
 include = ["app*", "config*", "src*"]
-exclude = ["deprecado*", "tests*", "scripts*", "venv*", "data*", "runs*"]
+exclude = ["tests*", "venv*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

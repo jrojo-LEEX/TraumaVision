@@ -800,7 +800,7 @@ class TestAperturaDelEstudioEnPantalla:
             db_session, user_id=user_id, original_filename="serie.zip",
             total_images=len(confianzas),
             images_with_findings=sum(1 for c in confianzas if c >= 0.25),
-            anatomical_region="muneca_pediatrica", model_version="yolov8m_v1",
+            anatomical_region="muneca_pediatrica", model_version="v1r",
         )
         for i, conf in enumerate(confianzas):
             a = crud.create_analysis(
@@ -810,7 +810,7 @@ class TestAperturaDelEstudioEnPantalla:
                 report_text=f"Imagen {i + 1}",
                 max_detection_confidence=conf, is_abnormal=conf >= 0.25,
                 inference_time_ms=10.0, anatomical_region="muneca_pediatrica",
-                model_version="yolov8m_v1", routing_method="manual",
+                model_version="v1r", routing_method="manual",
                 urgency=calculate_urgency(conf),
             )
             if conf > 0:
@@ -1204,7 +1204,7 @@ class TestSinConsultasPorFila:
             e = crud.create_study(
                 db_session, user_id=users["principal"], original_filename="s.zip",
                 total_images=n, images_with_findings=n,
-                anatomical_region="muneca_pediatrica", model_version="yolov8m_v1",
+                anatomical_region="muneca_pediatrica", model_version="v1r",
             )
             for i in range(n):
                 a = crud.create_analysis(
@@ -1213,7 +1213,7 @@ class TestSinConsultasPorFila:
                     annotated_image_path=f"x{i}_annotated.png",
                     report_text="", max_detection_confidence=0.9, is_abnormal=True,
                     inference_time_ms=1.0, anatomical_region="muneca_pediatrica",
-                    model_version="yolov8m_v1", routing_method="manual", urgency="HIGH",
+                    model_version="v1r", routing_method="manual", urgency="HIGH",
                 )
                 crud.create_detection_boxes(db_session, a.id, [
                     {"x1": 1, "y1": 1, "x2": 9, "y2": 9, "confidence": 0.9},

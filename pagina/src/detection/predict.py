@@ -128,7 +128,7 @@ class FractureDetector:
         self.confidence_threshold = CONFIDENCE_THRESHOLD
         self.abnormal_threshold = ABNORMAL_THRESHOLD
         self.region = region or DEFAULT_REGION
-        # Nombre de la corrida (runs/fracture/<corrida>/weights/best.pt)
+        # Nombre de la corrida (modelo/<corrida>/weights/best.pt)
         self.model_version = path.parent.parent.name
         # Las rutas corren `predict` en el threadpool para no congelar el
         # bucle de eventos (auditoría 2026-09-01, 04_web H7). Eso significa

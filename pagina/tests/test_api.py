@@ -98,7 +98,7 @@ def crear_analisis(db_session, user_id: int, **kwargs):
         is_abnormal=True,
         inference_time_ms=12.0,
         anatomical_region="muneca_pediatrica",
-        model_version="yolov8m_v1",
+        model_version="v1r",
         routing_method="manual",
         urgency="HIGH",
     )
@@ -580,14 +580,14 @@ class TestCRUD:
         estudio = crud.create_study(
             db_session, user_id=users["principal"], original_filename="e.zip",
             total_images=2, images_with_findings=1,
-            anatomical_region="muneca_pediatrica", model_version="yolov8m_v1",
+            anatomical_region="muneca_pediatrica", model_version="v1r",
         )
         for i in range(2):
             crear_analisis(db_session, users["principal"], study_id=estudio.id,
                            original_image_path=f"{i}_o.png")
         assert len(crud.get_analyses_by_study(db_session, estudio.id)) == 2
         # La trazabilidad del modelo se guarda también en el estudio.
-        assert estudio.model_version == "yolov8m_v1"
+        assert estudio.model_version == "v1r"
 
     def test_feedback_unico_por_analisis(self, db_session, users):
         from app.database import crud

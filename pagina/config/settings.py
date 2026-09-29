@@ -16,8 +16,6 @@ load_dotenv()
 
 # --- Rutas del proyecto ---
 BASE_DIR = Path(__file__).resolve().parent.parent  # Carpeta raíz del proyecto
-DATA_DIR = BASE_DIR / "data"
-MODELS_DIR = BASE_DIR / "models"
 UPLOADS_DIR = BASE_DIR / "app" / "uploads"
 
 # --- Constantes de la aplicación ---
@@ -86,14 +84,7 @@ EMAIL_RATE_LIMIT_PER_HOUR = int(os.getenv("EMAIL_RATE_LIMIT_PER_HOUR", "10"))
 # (datos/grazpedwri/armar_dataset.py, clipLimit=2.0, tileGridSize=8x8).
 # La inferencia aplica exactamente el mismo filtro para que el modelo vea en
 # producción la misma distribución que vio al entrenar.
-#
-# Medición del 2026-08-24 sobre el test de GRAZPEDWRI (n=2698, 2412 instancias):
-#   con CLAHE (consistente):  mAP50=0.9335  mAP50-95=0.5441  P=0.8997  R=0.8662
-#   sin CLAHE (crudo):        mAP50=0.9380  mAP50-95=0.5471  P=0.9224  R=0.8628
-# La diferencia es despreciable en ambos sentidos. Se elige la vía consistente
-# con el entrenamiento porque es la defendible metodológicamente, y porque el
-# margen crudo se midió sobre PNG de 8 bits del propio dataset — no dice nada
-# sobre DICOM clínico de 12–16 bits, que es otro dominio.
+# Se aplica en entrenamiento e inferencia por consistencia.
 APPLY_CLAHE_AT_INFERENCE = os.getenv("APPLY_CLAHE_AT_INFERENCE", "true").lower() in ("1", "true", "yes")
 CLAHE_CLIP_LIMIT = float(os.getenv("CLAHE_CLIP_LIMIT", "2.0"))
 CLAHE_TILE_SIZE = int(os.getenv("CLAHE_TILE_SIZE", "8"))
@@ -142,7 +133,6 @@ URGENCY_MED_THRESHOLD = float(os.getenv("URGENCY_MED_THRESHOLD", str(ABNORMAL_TH
 #     Sus métricas publicadas (mAP 0.961 / recall 0.927) no son válidas.
 #   - general_adulto: los pools de datos que lo entrenaron (general_pool_v3)
 #     fueron borrados, así que no es reproducible ni re-validable.
-# Sus checkpoints están en deprecado/modelos-retirados/.
 YOLO_MODELS = {
     # yolov8m_v1r: v1 reentrenado el 2026-09-28 (modelo/entrenar.py). El
     # checkpoint de v1 sigue en modelo/archivados/v1/.

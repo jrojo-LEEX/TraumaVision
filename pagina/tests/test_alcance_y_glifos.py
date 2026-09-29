@@ -66,7 +66,7 @@ def _detector_stub(region="muneca_pediatrica"):
     d.confidence_threshold = CONFIDENCE_THRESHOLD
     d.abnormal_threshold = ABNORMAL_THRESHOLD
     d.region = region
-    d.model_version = "yolov8m_v1"
+    d.model_version = "v1r"
     return d
 
 
@@ -82,7 +82,7 @@ def _resultado(conf=0.80):
         annotated_image=np.zeros((100, 100, 3), dtype=np.uint8),
         inference_time_ms=123.0,
         image_size=(100, 100),
-        model_version="yolov8m_v1",
+        model_version="v1r",
         clahe_applied=True,
     )
 

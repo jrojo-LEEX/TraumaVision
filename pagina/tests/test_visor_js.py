@@ -61,7 +61,7 @@ def _estudio_de_dos_imagenes(db_session, user_id, confianzas=(0.9, 0.8)):
     estudio = crud.create_study(
         db_session, user_id=user_id, original_filename="estudio.zip",
         total_images=len(confianzas), images_with_findings=len(confianzas),
-        anatomical_region="muneca_pediatrica", model_version="yolov8m_v1",
+        anatomical_region="muneca_pediatrica", model_version="v1r",
     )
     for i, conf in enumerate(confianzas):
         a = crud.create_analysis(
@@ -71,7 +71,7 @@ def _estudio_de_dos_imagenes(db_session, user_id, confianzas=(0.9, 0.8)):
             report_text=f"Imagen {i + 1}",
             max_detection_confidence=conf, is_abnormal=True,
             inference_time_ms=10.0, anatomical_region="muneca_pediatrica",
-            model_version="yolov8m_v1", routing_method="manual", urgency="HIGH",
+            model_version="v1r", routing_method="manual", urgency="HIGH",
         )
         crud.create_detection_boxes(db_session, a.id, [
             {"x1": 5, "y1": 5, "x2": 25, "y2": 25, "confidence": conf},

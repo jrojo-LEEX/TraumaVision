@@ -113,8 +113,8 @@
       <span class="card-title">Cómo se reparten tus revisiones</span>
       {{ m.cuadrante(c) }}
       {% if c.cuadrante.limpio_no %}
-      {# La celda cara, dicha con palabras. No es una alarma: con recall
-         0,866 este caso EXISTE por diseño, y el sistema lo declara en todas
+      {# La celda cara, dicha con palabras. No es una alarma: con el recall
+         medido este caso EXISTE por diseño, y el sistema lo declara en todas
          sus pantallas. Acá se cuenta, que es la forma útil de decirlo. #}
       <p class="mx-flag">
         {{ m.icon('alert') }}
@@ -273,8 +273,8 @@
 
 <!-- ══════════ 5. RENDIMIENTO MEDIDO ═══════════════════════════════════
      Lo único de esta pantalla medido contra verdad anotada, y por eso lo
-     único que se puede llamar sensibilidad. No es tu práctica: son 2.698
-     estudios de test que ningún usuario de esta app tocó. -->
+     único que se puede llamar sensibilidad. No es tu práctica: son estudios de
+     test que ningún usuario de esta app tocó. -->
 {% if meta %}
 <section class="mx" aria-labelledby="ev-t">
   <div class="mx-head">
@@ -459,7 +459,7 @@ window.addEventListener('DOMContentLoaded', function () {
           /* Prioritario en color de hallazgo, Revisar en cautela y «Sin
              hallazgos» en NEUTRO. No lleva el acento: el acento es el color
              de la interacción, y pintarlo del mismo violeta que un botón lo
-             convertía en la categoría «buena» de la grilla. Con recall 0,866
+             convertía en la categoría «buena» de la grilla. Con el recall medido
              un negativo no es un logro y no se festeja con color. */
           backgroundColor: [css.getPropertyValue('--finding').trim(), cautela,
                             css.getPropertyValue('--fill-quiet').trim()],
