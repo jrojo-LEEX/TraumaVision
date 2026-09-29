@@ -289,7 +289,7 @@
   <div class="ev-grid">
     <div class="ev-metrics">
       <span class="ev-card-label">Acierto por imagen</span>
-      {{ m.metric_row('Detecta la fractura cuando existe', meta.sensibilidad, meta.sensibilidad_ic95, 'n ' ~ meta.test_n_positivos) }}
+      {{ m.metric_row('Detecta la fractura cuando existe', meta.sensibilidad, none, 'n ' ~ meta.test_n_positivos) }}
       {{ m.metric_row('Descarta bien cuando no hay fractura', meta.especificidad, none, 'n ' ~ meta.test_n_negativos) }}
       {{ m.metric_axis() }}
     </div>
@@ -321,15 +321,15 @@
     </p>
     <div class="ev-ext-grupo">
       <span class="ev-ext-sub">Por caso</span>
-      {{ m.metric_row('Detecta la fractura cuando existe', pc.sensibilidad, pc.sensibilidad_ic95, 'n ' ~ miles(pc.TP + pc.FN) ~ ' casos', piso=0.70) }}
-      {{ m.metric_row('Descarta bien cuando no hay fractura', pc.especificidad, pc.especificidad_ic95, 'n ' ~ miles(pc.FP + pc.TN) ~ ' casos', piso=0.70) }}
+      {{ m.metric_row('Detecta la fractura cuando existe', pc.sensibilidad, none, 'n ' ~ miles(pc.TP + pc.FN) ~ ' casos') }}
+      {{ m.metric_row('Descarta bien cuando no hay fractura', pc.especificidad, none, 'n ' ~ miles(pc.FP + pc.TN) ~ ' casos') }}
     </div>
     <div class="ev-ext-grupo">
       <span class="ev-ext-sub">Por imagen</span>
-      {{ m.metric_row('Detecta la fractura cuando existe', pi.sensibilidad, pi.sensibilidad_ic95, 'n ' ~ miles(pi.TP + pi.FN) ~ ' imágenes', piso=0.70) }}
-      {{ m.metric_row('Descarta bien cuando no hay fractura', pi.especificidad, pi.especificidad_ic95, 'n ' ~ miles(pi.FP + pi.TN) ~ ' imágenes', piso=0.70) }}
+      {{ m.metric_row('Detecta la fractura cuando existe', pi.sensibilidad, none, 'n ' ~ miles(pi.TP + pi.FN) ~ ' imágenes') }}
+      {{ m.metric_row('Descarta bien cuando no hay fractura', pi.especificidad, none, 'n ' ~ miles(pi.FP + pi.TN) ~ ' imágenes') }}
     </div>
-    {{ m.metric_axis(piso=0.70) }}
+    {{ m.metric_axis() }}
   </div>
   {% endif %}
 

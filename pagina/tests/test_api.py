@@ -921,3 +921,10 @@ class TestInformeEstructurado:
         grande = DetectionBox(0, 0, 400, 400, 0.9)    # 16 % del área
         assert FractureDetector._tamano_relativo(chico, 1000, 1000) == "focal"
         assert FractureDetector._tamano_relativo(grande, 1000, 1000) == "extenso"
+
+
+def test_metricas_no_muestra_el_margen_de_error(auth_client):
+    html = auth_client.get("/dashboard/").text
+    assert "IC 95" not in html and "IC&nbsp;95" not in html
+    assert "mrow-ic" not in html
+    assert "intervalo de confianza" not in html

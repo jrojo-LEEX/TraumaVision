@@ -434,7 +434,7 @@
 <div class="mrow">
   <span class="mrow-label">{{ rotulo }}{% if nota %}<span class="mrow-note">{{ nota }}</span>{% endif %}</span>
   <span class="mrow-track" role="img"
-        aria-label="{{ rotulo }}: {{ ("%.3f"|format(v))|replace('.', ',') }}{% if ic %}, intervalo de confianza del 95 por ciento de {{ ("%.3f"|format(ic[0]))|replace('.', ',') }} a {{ ("%.3f"|format(ic[1]))|replace('.', ',') }}{% else %}, sin intervalo publicado{% endif %}. Escala de {{ (piso * 100)|round|int }} a 100 por ciento.">
+        aria-label="{{ rotulo }}: {{ ("%.3f"|format(v))|replace('.', ',') }}{% if ic %}, intervalo de confianza del 95 por ciento de {{ ("%.3f"|format(ic[0]))|replace('.', ',') }} a {{ ("%.3f"|format(ic[1]))|replace('.', ',') }}{% endif %}. Escala de {{ (piso * 100)|round|int }} a 100 por ciento.">
     {%- if ic -%}
     {#- Los dos extremos se recortan al MISMO borde, y es el izquierdo: la
         condición pregunta si el valor está por encima del PISO, así que
@@ -461,7 +461,6 @@
     <span style="--pos: 50%;">{{ ((piso + 1) / 2 * 100)|round|int }}</span>
     <span style="--pos: 100%;">100</span>
   </span>
-  <span class="maxis-key"><span class="maxis-seg" aria-hidden="true"></span>IC 95&nbsp;%</span>
 </div>
 {%- endmacro -%}
 
@@ -541,13 +540,9 @@
           multicéntrico.</strong></dd>
       {% endif %}
 
-      <dt>Intervalos y nivel de medición</dt>
-      <dd>Sensibilidad {{ ("%.3f"|format(meta.sensibilidad))|replace('.', ',') }},
-          IC&nbsp;95&nbsp;% de {{ ("%.3f"|format(meta.sensibilidad_ic95[0]))|replace('.', ',') }}
-          a {{ ("%.3f"|format(meta.sensibilidad_ic95[1]))|replace('.', ',') }}. Sensibilidad y
-          especificidad están medidas <strong>a nivel imagen, en el punto de operación
-          real</strong>; el recall de detección es por caja. Donde el sistema no publica
-          intervalo, el gráfico dibuja el punto solo: no se estima ninguno.</dd>
+      <dt>Nivel de medición</dt>
+      <dd>Sensibilidad y especificidad están medidas <strong>a nivel imagen, en el punto de operación
+          real</strong>; el recall de detección es por caja.</dd>
 
       <dt>Qué se le escapa</dt>
       <dd>Recall de detección {{ ("%.3f"|format(meta.recall))|replace('.', ',') }}:
