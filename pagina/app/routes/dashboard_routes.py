@@ -281,6 +281,10 @@ def filas_analisis(analyses: list[Analysis]) -> list[list]:
             len(a.detection_boxes),
             a.model_version or "",
             f"{(a.inference_time_ms or 0):.0f}",
+            # El informe de texto TAL COMO SE GUARDÓ, también el de modelos
+            # anteriores (que la página ya no muestra). Es el dato crudo; en
+            # un solo renglón para que la planilla no parta la fila.
+            " ".join((a.report_text or "").split()),
         ]
         for a in analyses
     ]
@@ -289,7 +293,7 @@ def filas_analisis(analyses: list[Analysis]) -> list[list]:
 ENCABEZADOS_ANALISIS = [
     "id", "fecha", "region", "clasificacion", "urgencia",
     "confianza_maxima", "hallazgos_sobre_umbral", "regiones_marcadas",
-    "modelo", "inferencia_ms",
+    "modelo", "inferencia_ms", "informe_texto",
 ]
 
 

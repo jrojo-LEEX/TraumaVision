@@ -111,6 +111,23 @@ def _base_context(request: Request, user: User) -> dict:
     }
 
 
+# El `report_text` guardado por un modelo anterior es el informe de su época:
+# cita probabilidades «calibradas» (Platt, isotónica) y umbrales que el
+# sistema ya no sostiene. No se muestra, ni en pantalla ni en el PDF ni en el
+# correo; en la base y en la exportación CSV queda sin cambios.
+NOTA_INFORME_ANTERIOR = (
+    "El informe de texto original de este análisis lo generó un modelo anterior "
+    "y no se muestra. Se conserva sin cambios en la base y en la exportación CSV."
+)
+
+
+def _texto_del_informe(analysis) -> str:
+    """El informe de texto que se puede mostrar de un análisis."""
+    if es_modelo_vigente(analysis.model_version):
+        return analysis.report_text or ""
+    return NOTA_INFORME_ANTERIOR
+
+
 def _modelo_anterior(region, model_version) -> bool:
     """Análisis de la región validada hecho con un modelo que ya no está en uso.
 
@@ -405,8 +422,8 @@ async def view_analysis(
             "analysis_id": analysis.id,
             "annotated_image": analysis.annotated_image_path,
             "original_image": analysis.original_image_path,
-            "report_text": analysis.report_text,
-            "max_confidence": f"{(analysis.max_detection_confidence or 0) * 100:.1f}%",
+            "report_text": _texto_del_informe(analysis),
+            "informe_oculto": not es_modelo_vigente(analysis.model_version),
             "is_abnormal": analysis.is_abnormal,
             "inference_time": f"{analysis.inference_time_ms or 0:.0f}",
             "boxes": boxes,
@@ -462,7 +479,7 @@ async def download_pdf(
     pdf_bytes = generate_pdf_report(
         original_image=original,
         annotated_image=anotada,
-        report_text=analysis.report_text,
+        report_text=_texto_del_informe(analysis),
         analysis_id=str(analysis.id),
         doctor_name=user.name,
         # La región del ANÁLISIS, no la del modelo vivo: un informe generado
@@ -509,7 +526,7 @@ async def send_email_report(
     pdf_bytes = generate_pdf_report(
         original_image=original,
         annotated_image=anotada,
-        report_text=analysis.report_text,
+        report_text=_texto_del_informe(analysis),
         analysis_id=str(analysis.id),
         doctor_name=user.name,
         # La región del ANÁLISIS, no la del modelo vivo: un informe generado
@@ -530,7 +547,7 @@ async def send_email_report(
         body_text=(
             f"Adjunto el informe del análisis #{analysis.id} generado por TraumaVision AI.\n"
             f"Solicitado por: {user.name}\n\n"
-            f"{analysis.report_text}\n\n"
+            f"{_texto_del_informe(analysis)}\n\n"
             "AVISO: informe generado por un sistema de asistencia. Debe ser "
             "interpretado exclusivamente por un profesional médico matriculado."
         ),

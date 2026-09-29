@@ -220,7 +220,11 @@
           <dt>Inferencia</dt>
           <dd>{{ inference_time }} ms</dd>
         </dl>
-        {% if report_text %}
+        {% if informe_oculto %}
+        {# El informe guardado por un modelo anterior no se muestra: cita
+           probabilidades y calibradores que el sistema ya no sostiene. #}
+        <p class="field-hint">{{ report_text }}</p>
+        {% elif report_text %}
         <div class="report-text">{{ report_text }}</div>
         {% endif %}
       </div>

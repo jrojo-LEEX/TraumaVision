@@ -264,3 +264,59 @@ class TestValidacionEnMetricas:
         html = auth_client.get(f"/analysis/{a.id}/results").text
         assert "Interna, separada por paciente" in html
         assert "externa retrospectiva" not in html
+
+
+# ─── El informe de texto guardado por un modelo anterior no se muestra ──────
+
+INFORME_V2 = (
+    "Probabilidad estimada de fractura en el estudio: más de 95 % "
+    "(score calibrado por Platt scaling sobre validación). "
+    "Otra versión: 60 % (score calibrado por regresión isotónica)."
+)
+PROHIBIDAS = ("Platt", "isotónica", "Probabilidad estimada")
+
+
+class TestInformeDeModeloAnterior:
+
+    def test_ni_la_pagina_ni_el_pdf_muestran_el_informe_viejo(
+        self, auth_client, db_session, users
+    ):
+        a = crear_analisis(db_session, users["principal"], model_version=V2,
+                           report_text=INFORME_V2)
+        _guardar_imagenes_de(a)
+
+        html = auth_client.get(f"/analysis/{a.id}/results").text
+        pdf = texto_del_pdf(auth_client.get(f"/analysis/{a.id}/pdf").content)
+        for palabra in PROHIBIDAS:
+            assert palabra not in html, palabra
+            assert palabra.lower() not in pdf.lower(), palabra
+        assert "lo generó un modelo anterior y no se muestra" in html
+        assert "no se muestra" in pdf
+
+    def test_el_correo_tampoco(self, auth_client, db_session, users, monkeypatch):
+        import app.services.email_service as es
+
+        a = crear_analisis(db_session, users["principal"], model_version=V2,
+                           report_text=INFORME_V2)
+        _guardar_imagenes_de(a)
+        recibido = {}
+        monkeypatch.setattr(es, "send_report_email", lambda **kw: recibido.update(kw) or True)
+        auth_client.post(f"/analysis/{a.id}/email", data={"to_email": "dra@hospital.test"})
+        assert "Platt" not in recibido["body_text"]
+        assert "no se muestra" in recibido["body_text"]
+
+    def test_el_vigente_si_muestra_su_informe(self, auth_client, db_session, users):
+        a = crear_analisis(db_session, users["principal"], model_version="v1r",
+                           report_text="INFORME_VIGENTE")
+        html = auth_client.get(f"/analysis/{a.id}/results").text
+        assert "INFORME_VIGENTE" in html
+
+    def test_el_csv_conserva_el_informe_original(self, auth_client, db_session, users):
+        a = crear_analisis(db_session, users["principal"], model_version=V2,
+                           report_text=INFORME_V2)
+        from app.database.models import Analysis
+
+        assert db_session.get(Analysis, a.id).report_text == INFORME_V2
+        csv = auth_client.get("/dashboard/export/analisis.csv").text
+        assert V2 in csv
+        assert "Platt scaling" in csv and "informe_texto" in csv
