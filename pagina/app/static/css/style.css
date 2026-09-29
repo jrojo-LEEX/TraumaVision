@@ -4067,6 +4067,13 @@ select {
   .ev-metrics { grid-area: metrics; }
   .ev-waffle  { grid-area: waffle; }
 }
+/* Test externo: misma tarjeta y mismo gráfico de puntos que el interno,
+   debajo de él. El eje va rotulado en su propio piso (70). */
+.ev-ext { margin-top: var(--s-5); gap: var(--s-6); }
+.ev-ext .ev-card-label { margin-bottom: 0; }
+.ev-ext-ctx { margin: 0; font-size: var(--fs-sm); color: var(--ink-2); }
+.ev-ext-grupo { display: flex; flex-direction: column; gap: var(--s-5); }
+.ev-ext-sub { font-size: var(--fs-sm); font-weight: 600; color: var(--ink); }
 /* El alcance clínico cierra la sección, igual que en el visor. */
 .mx > .scope { margin-top: var(--s-6); }
 

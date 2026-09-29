@@ -870,6 +870,21 @@ class TestAdminYExportacion:
         assert "Fractura de rodete no marcada" in r.text
         assert 'id="urgencias"' in r.text and 'id="confianzas"' in r.text
 
+    def test_metricas_muestra_test_externo(self, auth_client):
+        """El bloque PediURF sale de META: cada cifra visible viene de ahí."""
+        from config.settings import DEFAULT_REGION, MODEL_METADATA
+
+        ext = MODEL_METADATA[DEFAULT_REGION]["test_externo"]
+        pc = ext["por_caso"]
+        r = auth_client.get("/dashboard/")
+        assert r.status_code == 200
+        assert "Test externo" in r.text and "PediURF" in r.text
+        for v in (pc["sensibilidad"], pc["especificidad"]):
+            assert ("%.1f" % (v * 100)).replace(".", ",") + "&nbsp;%" in r.text
+            assert ("%.3f" % v).replace(".", ",") in r.text
+        assert "al menos" in r.text and "una de sus vistas" in r.text
+        assert "Acierto por imagen" in r.text and "nivel estudio" not in r.text
+
     def test_csv_no_mezcla_usuarios(self, auth_client, db_session, users):
         """El export propio no puede filtrar estudios ajenos."""
         crear_analisis(db_session, users["otro"], report_text="AJENO")

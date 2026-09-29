@@ -20,7 +20,7 @@ UPLOADS_DIR = BASE_DIR / "app" / "uploads"
 
 # --- Constantes de la aplicación ---
 APP_NAME = "TraumaVision AI"
-APP_VERSION = "2.1.0"
+APP_VERSION = "1.0.0"
 APP_DESCRIPTION = "Sistema de Soporte a la Decisión Clínica para Detección de Fracturas"
 MAX_UPLOAD_SIZE_MB = 20      # Tamaño máximo de imagen suelta
 MAX_ZIP_SIZE_MB = 200        # Tamaño máximo del ZIP de un estudio
@@ -92,10 +92,10 @@ CLAHE_TILE_SIZE = int(os.getenv("CLAHE_TILE_SIZE", "8"))
 # ── Umbrales de detección ─────────────────────────────────────────────────────
 # Dos umbrales distintos, con propósitos distintos:
 #
-#   CONFIDENCE_THRESHOLD (0.15) — a partir de acá se DIBUJA la caja. Sirve para
-#   que el médico vea hallazgos de baja confianza como referencia.
-#   Justificación: threshold_sweep (2026-04-19) ubicó el F1 óptimo global en
-#   τ=0.15 (F1=88.8%). Para screening, maximizar recall es lo correcto.
+#   CONFIDENCE_THRESHOLD (0.15) — a partir de acá se DIBUJA la caja. Es un
+#   umbral de VISUALIZACIÓN, más bajo que el de anormalidad: sirve para
+#   mostrarle al médico hallazgos dudosos como referencia, sin que por eso
+#   el estudio se clasifique como anormal.
 #
 #   ABNORMAL_THRESHOLD (0.22) — a partir de acá el estudio se CLASIFICA como
 #   anormal. Separar ambos evita reportar como patológico todo lo que se dibuja.
@@ -198,6 +198,36 @@ MODEL_METADATA: dict = {
         "test_TN": 942,
         "test_n_positivos": 2026,
         "test_n_negativos": 1012,
+        # ── test externo PediURF · modelo/resultados/metricas_externo.json ─
+        # Radiografías de antebrazo pediátrico recortadas a la muñeca. Por
+        # CASO (positivo si alguna de sus vistas marca fractura) y por imagen.
+        "test_externo": {
+            "pesos": "modelo/v1r/weights/best.pt",
+            "fecha": "2026-09-29",
+            "umbral": 0.22,
+            "n_casos": 1000,
+            "n_imagenes": 1790,
+            "por_caso": {
+                "TP": 493,
+                "FN": 7,
+                "FP": 84,
+                "TN": 416,
+                "sensibilidad": 0.986,
+                "sensibilidad_ic95": (0.9714, 0.9932),
+                "especificidad": 0.832,
+                "especificidad_ic95": (0.7967, 0.8622),
+            },
+            "por_imagen": {
+                "TP": 968,
+                "FN": 26,
+                "FP": 93,
+                "TN": 703,
+                "sensibilidad": 0.9738,
+                "sensibilidad_ic95": (0.9619, 0.9821),
+                "especificidad": 0.8832,
+                "especificidad_ic95": (0.859, 0.9037),
+            },
+        },
         "supported_regions": ["Muñeca pediátrica"],
         "low_recall_regions": [],
     },

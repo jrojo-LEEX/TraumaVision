@@ -343,7 +343,7 @@ class FractureDetector:
             "no una probabilidad de fractura."
         )
 
-        # La sensibilidad a nivel de estudio estaba escrita a mano en este
+        # La sensibilidad por imagen estaba escrita a mano en este
         # informe, que es el que va al PDF. Era el único número clínico que
         # quedaba suelto: al reentrenar, el PDF seguía afirmando el viejo.
         # Ahora sale de la metadata de LA REGIÓN CON LA QUE SE CORRIÓ esta
@@ -359,7 +359,7 @@ class FractureDetector:
             medida = (
                 " (sensibilidad medida: "
                 + ("%.1f" % (sensibilidad * 100)).replace(".", ",")
-                + " % a nivel de estudio)."
+                + " % por imagen)."
             )
 
         lineas += [
