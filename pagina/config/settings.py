@@ -16,7 +16,7 @@ load_dotenv()
 
 # --- Rutas del proyecto ---
 BASE_DIR = Path(__file__).resolve().parent.parent  # Carpeta raíz del proyecto
-UPLOADS_DIR = BASE_DIR / "app" / "uploads"
+UPLOADS_DIR = Path(os.getenv("UPLOADS_DIR", str(BASE_DIR / "app" / "uploads")))
 
 # --- Constantes de la aplicación ---
 APP_NAME = "TraumaVision AI"

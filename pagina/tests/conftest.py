@@ -7,7 +7,13 @@ Se usa StaticPool para que todas las sesiones compartan la misma conexión, que
 es lo que hace falta para que una base en memoria sobreviva entre requests.
 """
 
+import os
 import re
+import tempfile
+
+# Las imágenes que suben los tests van a una carpeta temporal, nunca a app/uploads:
+# ahí están los estudios reales. Tiene que definirse antes de importar la app.
+os.environ["UPLOADS_DIR"] = tempfile.mkdtemp(prefix="traumavision_tests_")
 
 import pytest
 from fastapi.testclient import TestClient

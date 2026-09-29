@@ -541,3 +541,9 @@ class TestDetalleDeUrgencia:
         assert "probabilidad" not in detalle["detalle"].lower()
         assert "probabilidad" not in detalle
 
+
+
+def test_los_tests_no_escriben_en_los_uploads_reales():
+    from config.settings import BASE_DIR, UPLOADS_DIR
+
+    assert UPLOADS_DIR.resolve() != (BASE_DIR / "app" / "uploads").resolve()
