@@ -57,6 +57,7 @@ from config.settings import (
     SMTP_EMAIL,
     UPLOADS_DIR,
     es_modelo_vigente,
+    texto_del_informe,
 )
 
 router = APIRouter()
@@ -111,21 +112,9 @@ def _base_context(request: Request, user: User) -> dict:
     }
 
 
-# El `report_text` guardado por un modelo anterior es el informe de su época:
-# cita probabilidades «calibradas» (Platt, isotónica) y umbrales que el
-# sistema ya no sostiene. No se muestra, ni en pantalla ni en el PDF ni en el
-# correo; en la base y en la exportación CSV queda sin cambios.
-NOTA_INFORME_ANTERIOR = (
-    "El informe de texto original de este análisis lo generó un modelo anterior "
-    "y no se muestra. Se conserva sin cambios en la base y en la exportación CSV."
-)
-
-
 def _texto_del_informe(analysis) -> str:
-    """El informe de texto que se puede mostrar de un análisis."""
-    if es_modelo_vigente(analysis.model_version):
-        return analysis.report_text or ""
-    return NOTA_INFORME_ANTERIOR
+    """El informe de texto que se puede mostrar (ver `texto_del_informe`)."""
+    return texto_del_informe(analysis.model_version, analysis.report_text)
 
 
 def _modelo_anterior(region, model_version) -> bool:
@@ -457,8 +446,30 @@ async def view_analysis(
 
 # ─── PDF ─────────────────────────────────────────────────────────────────────
 
+# Color de las cajas de un análisis que NO es del modelo vigente, en el PDF:
+# el violeta 200 de KIBBO (--kb-violet-200, el --ov del quemado de la placa en
+# style.css). La anotada guardada las pinta en rojo/ámbar según el corte de su
+# época, y ese corte no es el del sistema de hoy.
+_CAJA_NEUTRA = "#CFC4F1"
+
+
+def _anotada_neutra(original: Image.Image, cajas) -> Image.Image:
+    """La placa original con las cajas guardadas, todas en el color neutro."""
+    from PIL import ImageDraw
+
+    lienzo = original.convert("RGB")
+    trazo = max(2, round(max(lienzo.size) / 500))
+    dibujo = ImageDraw.Draw(lienzo)
+    for b in cajas:
+        dibujo.rectangle([b.x1, b.y1, b.x2, b.y2], outline=_CAJA_NEUTRA, width=trazo)
+    return lienzo
+
+
 def _cargar_imagenes(analysis) -> tuple[Image.Image, Image.Image]:
     original = Image.open(str(UPLOADS_DIR / analysis.original_image_path))
+    if not es_modelo_vigente(analysis.model_version):
+        # Las cajas se siguen mostrando, pero sin el color «sobre el corte».
+        return original, _anotada_neutra(original, analysis.detection_boxes)
     anotada = Image.open(str(UPLOADS_DIR / analysis.annotated_image_path))
     return original, anotada
 

@@ -320,3 +320,87 @@ class TestInformeDeModeloAnterior:
         csv = auth_client.get("/dashboard/export/analisis.csv").text
         assert V2 in csv
         assert "Platt scaling" in csv and "informe_texto" in csv
+
+
+# ─── API: misma regla que la web ────────────────────────────────────────────
+
+class TestApiModeloAnterior:
+
+    def _get(self, client, db_session, users, analysis_id):
+        from app.database import crud
+
+        _, raw = crud.create_api_key(db_session, "k", owner_user_id=users["principal"])
+        return client.get(f"/api/v1/analysis/{analysis_id}",
+                          headers={"X-API-Key": raw}).json()
+
+    def test_no_vigente_sin_informe_ni_prioridad(self, client, db_session, users):
+        from app.database import crud
+        from config.settings import NOTA_INFORME_ANTERIOR
+
+        a = crear_analisis(db_session, users["principal"], model_version=V2,
+                           report_text=INFORME_V2, urgency="HIGH")
+        crud.create_detection_boxes(db_session, a.id, [
+            {"x1": 1, "y1": 1, "x2": 9, "y2": 9, "confidence": 0.95},
+        ])
+        datos = self._get(client, db_session, users, a.id)
+        assert datos["modelo_vigente"] is False
+        assert datos["report_text"] == NOTA_INFORME_ANTERIOR
+        assert datos["urgency"] is None
+        assert datos["findings_above_threshold"] is None
+        assert datos["boxes"][0]["above_abnormal_threshold"] is None
+        for palabra in PROHIBIDAS:
+            assert palabra not in str(datos)
+
+    def test_vigente_sin_cambios(self, client, db_session, users):
+        a = crear_analisis(db_session, users["principal"], model_version="v1r",
+                           report_text="INFORME_VIGENTE", urgency="HIGH")
+        datos = self._get(client, db_session, users, a.id)
+        assert datos["modelo_vigente"] is True
+        assert datos["report_text"] == "INFORME_VIGENTE"
+        assert datos["urgency"] == "HIGH"
+
+
+# ─── Cajas de un análisis anterior: color neutro ────────────────────────────
+
+class TestCajasNeutras:
+
+    def _con_caja(self, db_session, users, modelo):
+        from app.database import crud
+
+        a = crear_analisis(db_session, users["principal"], model_version=modelo)
+        crud.create_detection_boxes(db_session, a.id, [
+            {"x1": 4, "y1": 4, "x2": 30, "y2": 30, "confidence": 0.95},
+        ])
+        return a
+
+    def test_la_web_marca_el_panel_sin_corte(self, auth_client, db_session, users):
+        a = self._con_caja(db_session, users, V2)
+        html = auth_client.get(f"/analysis/{a.id}/results").text
+        assert "data-sin-corte" in html
+        assert 'class="find is-neutral"' in html
+
+    def test_el_vigente_conserva_sus_colores(self, auth_client, db_session, users):
+        a = self._con_caja(db_session, users, "v1r")
+        html = auth_client.get(f"/analysis/{a.id}/results").text
+        assert "data-sin-corte" not in html
+        assert "is-neutral" not in html
+
+    def test_viewer_y_css_tienen_la_caja_neutra(self):
+        from pathlib import Path
+
+        raiz = Path(__file__).resolve().parent.parent / "app" / "static"
+        js = (raiz / "js" / "viewer.js").read_text(encoding="utf-8")
+        css = (raiz / "css" / "style.css").read_text(encoding="utf-8")
+        assert "data-sin-corte" in js and "bx-neutral" in js
+        assert ".bx-neutral rect { stroke: var(--ov)" in css
+
+    def test_el_pdf_redibuja_las_cajas_en_neutro(self, db_session, users):
+        from app.database.models import Analysis
+        from app.routes.analysis_routes import _CAJA_NEUTRA, _cargar_imagenes
+
+        a = self._con_caja(db_session, users, V2)
+        _guardar_imagenes_de(a)
+        a = db_session.get(Analysis, a.id)
+        _, anotada = _cargar_imagenes(a)
+        esperado = tuple(int(_CAJA_NEUTRA[i:i + 2], 16) for i in (1, 3, 5))
+        assert anotada.convert("RGB").getpixel((4, 15)) == esperado

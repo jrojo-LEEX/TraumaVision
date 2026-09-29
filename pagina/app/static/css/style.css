@@ -2963,6 +2963,14 @@ select {
   transform-origin: left center;
 }
 .find.is-low .find-fill { background: var(--fill-caution); }
+/* Fila de un resultado de un modelo anterior: sin corte que la clasifique,
+   relleno sin estado (--fill-quiet) y fijación en gris de control. */
+.find.is-neutral .find-fill { background: var(--fill-quiet); }
+.find.is-neutral[aria-pressed="true"] {
+  background: var(--ground-2);
+  box-shadow: inset 3px 0 0 var(--rule-2);
+}
+.find.is-neutral[aria-pressed="true"] .find-n { color: var(--ink); }
 /* La marca del corte cruza la pista entera y sobresale arriba y abajo, así
    que no puede quedar recortada por el `overflow` de la píldora: vive
    fuera, en el contenedor de la fila. */
@@ -3275,6 +3283,14 @@ select {
   filter: drop-shadow(0 0 6px rgba(236,79,188,.6));
 }
 .bx-low.is-hot rect { filter: drop-shadow(0 0 6px rgba(247,181,0,.55)); }
+
+/* Caja de un resultado de un modelo que NO es el vigente. El magenta y el
+   ámbar dicen «sobre / bajo el corte de aviso», y ese corte es del modelo
+   vigente: no le aplica. Va en --ov (violeta 200 de KIBBO, 12,33 sobre el
+   abismo), el color del quemado de la placa, que no porta estado. */
+.bx-neutral rect { stroke: var(--ov); stroke-dasharray: none; }
+.bx-tag.bx-neutral rect { fill: var(--ov); }
+.bx-neutral.is-hot rect { filter: drop-shadow(0 0 6px rgba(70,28,202,.55)); }
 
 /* ─── 35.b Cortina de comparación ───────────────────────────────────── */
 /* A la izquierda del corte, la placa como salió del equipo. A la derecha,
@@ -3856,7 +3872,7 @@ select {
 .mx-inline { margin-top: var(--s-5); }
 /* Alcance de Métricas: sólo el modelo vigente. Una línea discreta bajo la
    cabecera; los análisis anteriores siguen en el historial. */
-.dash-scope { margin: var(--s-4) 0 0; }
+.dash-scope { margin: var(--s-4) 0 var(--s-10); }
 
 /* ─── 38.a.1 El dato principal ──────────────────────────────────────
    Un número, su rótulo arriba y SU DENOMINADOR abajo. El denominador no es

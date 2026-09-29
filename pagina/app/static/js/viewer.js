@@ -95,7 +95,7 @@
     var self = this;
     datos.forEach(function (b, i) {
       var g = document.createElementNS(SVGNS, 'g');
-      g.setAttribute('class', 'bx' + (b.low ? ' bx-low' : ''));
+      g.setAttribute('class', 'bx' + (b.low ? ' bx-low' : '') + (b.neutral ? ' bx-neutral' : ''));
       g.setAttribute('data-bx', i);
 
       var r = document.createElementNS(SVGNS, 'rect');
@@ -112,7 +112,7 @@
          Lleva `bx-low` propio porque ya no cuelga del grupo de la caja: el
          color del número lo decide su propia clase, no la del ancestro. */
       var tag = document.createElementNS(SVGNS, 'g');
-      tag.setAttribute('class', 'bx-tag' + (b.low ? ' bx-low' : ''));
+      tag.setAttribute('class', 'bx-tag' + (b.low ? ' bx-low' : '') + (b.neutral ? ' bx-neutral' : ''));
       tag.setAttribute('data-bx', i);
       /* La clave es `c`, no `confidence`: así la serializa `_boxes_json`
          (analysis_routes.py) y así la lee el filtro de `low` de más abajo.
@@ -182,6 +182,16 @@
        mano: si el atributo faltaba, el visor pintaba las cajas contra un
        umbral que podía no ser el del sistema, en silencio. Sin el dato no
        se adivina: se avisa y no se clasifica ninguna caja. */
+    /* Resultado de un modelo que no es el vigente: el corte del vigente no
+       le aplica, así que ninguna caja se pinta «sobre» ni «bajo» el corte.
+       Van todas en el color neutro (`bx-neutral`). */
+    if (host.hasAttribute('data-sin-corte')) {
+      try {
+        var todas = JSON.parse(crudo);
+        if (!Array.isArray(todas)) return [];
+        return todas.map(function (b) { b.low = false; b.neutral = true; return b; });
+      } catch (_) { return []; }
+    }
     var umbral = parseFloat(host.getAttribute('data-abnormal-threshold'));
     if (isNaN(umbral)) {
       console.error('[TraumaVision] falta data-abnormal-threshold en el panel: no se dibujan las cajas.');

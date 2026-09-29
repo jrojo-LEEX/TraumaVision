@@ -6,7 +6,7 @@
 {% block main_class %}main-stage{% endblock %}
 
 {% block head %}
-<script defer src="/static/js/viewer.js?v=20"></script>
+<script defer src="/static/js/viewer.js?v=21"></script>
 {% endblock %}
 
 {% block content %}
@@ -146,7 +146,7 @@
     <div class="filmstrip" data-filmstrip role="tablist" aria-label="Imágenes del estudio">
       {% for r in results %}
       <button type="button"
-              class="frame {{ 'has-finding' if r.is_abnormal else '' }}"
+              class="frame {{ 'has-finding' if r.is_abnormal and not sin_prioridad else '' }}"
               role="tab"
               aria-current="{{ 'true' if r.index == initial_index else 'false' }}"
               data-idx="{{ r.index }}"
@@ -180,7 +180,8 @@
 
   <aside class="readout" data-find-host aria-label="Resultado por imagen"
          data-boxes="{{ first.boxes_json }}"
-         data-abnormal-threshold="{{ abnormal_threshold }}">
+         data-abnormal-threshold="{{ abnormal_threshold }}"
+         {% if sin_prioridad %}data-sin-corte{% endif %}>
 
     <div class="seg" role="group" aria-label="Filtrar imágenes">
       <button type="button" data-filter="all" aria-pressed="true">Todas <span class="count">{{ total_images }}</span></button>

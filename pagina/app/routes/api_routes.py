@@ -37,6 +37,8 @@ from config.settings import (
     MAX_UPLOAD_SIZE_MB,
     MODEL_METADATA,
     UPLOADS_DIR,
+    es_modelo_vigente,
+    texto_del_informe,
 )
 
 router = APIRouter(prefix="/api/v1", tags=["API REST v1"])
@@ -149,6 +151,7 @@ async def api_analyze(
         "boxes": boxes_data,
         "inference_time_ms": round(result.inference_time_ms, 1),
         "model_version": result.model_version,
+        "modelo_vigente": es_modelo_vigente(result.model_version),
         "preprocessing": "clahe" if result.clahe_applied else "none",
         "disclaimer": LEGAL_DISCLAIMER,
     }
@@ -162,12 +165,19 @@ def api_get_analysis(
     db: Session = Depends(get_db),
     api_key: ApiKey = Depends(require_api_key),
 ):
-    """Resultado completo de un análisis, si pertenece al dueño de la key."""
+    """Resultado completo de un análisis, si pertenece al dueño de la key.
+
+    Con la misma regla que la web: si el análisis no es del modelo vigente,
+    no se devuelve el informe de texto guardado (va la nota de modelo
+    anterior), la urgencia sale en None —no se informa prioridad— y nada se
+    clasifica contra el corte de aviso del vigente, que no le aplica.
+    """
     analysis = crud.get_analysis_for_user(db, analysis_id, api_key.owner_user_id)
     if not analysis:
         raise HTTPException(status_code=404, detail=f"Análisis {analysis_id} no encontrado.")
 
     boxes = crud.get_boxes_by_analysis(db, analysis_id)
+    vigente = es_modelo_vigente(analysis.model_version)
 
     return {
         "analysis_id": analysis.id,
@@ -175,21 +185,22 @@ def api_get_analysis(
         "routing_method": analysis.routing_method,
         "is_abnormal": analysis.is_abnormal,
         "max_detection_confidence": analysis.max_detection_confidence,
-        "findings_above_threshold": analysis.findings_above_abnormal,
-        "urgency": analysis.urgency,
+        "findings_above_threshold": analysis.findings_above_abnormal if vigente else None,
+        "urgency": analysis.urgency if vigente else None,
         "boxes": [
             {
                 "id": b.id,
                 "x1": b.x1, "y1": b.y1, "x2": b.x2, "y2": b.y2,
                 "confidence": b.confidence,
-                "above_abnormal_threshold": b.confidence >= ABNORMAL_THRESHOLD,
+                "above_abnormal_threshold": (b.confidence >= ABNORMAL_THRESHOLD) if vigente else None,
                 "label": b.label,
             }
             for b in boxes
         ],
-        "report_text": analysis.report_text,
+        "report_text": texto_del_informe(analysis.model_version, analysis.report_text),
         "inference_time_ms": analysis.inference_time_ms,
         "model_version": analysis.model_version,
+        "modelo_vigente": vigente,
         "created_at": analysis.created_at.isoformat() if analysis.created_at else None,
         "disclaimer": LEGAL_DISCLAIMER,
     }

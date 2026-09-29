@@ -6,7 +6,7 @@
 {% block main_class %}main-stage{% endblock %}
 
 {% block head %}
-<script defer src="/static/js/viewer.js?v=20"></script>
+<script defer src="/static/js/viewer.js?v=21"></script>
 {% endblock %}
 
 {% block content %}
@@ -100,7 +100,8 @@
   <aside class="readout" data-find-host
          aria-label="Resultado del análisis"
          data-boxes="{{ boxes_json }}"
-         data-abnormal-threshold="{{ abnormal_threshold }}">
+         data-abnormal-threshold="{{ abnormal_threshold }}"
+         {% if sin_prioridad %}data-sin-corte{% endif %}>
 
     {# Qué es esto, y de qué registro habla. La vuelta al historial no vive
        más acá: está en la barra de navegación (siempre visible) y en las

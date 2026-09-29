@@ -168,6 +168,23 @@ def es_modelo_vigente(model_version) -> bool:
     """
     return model_version in VERSIONES_VIGENTES
 
+
+# El `report_text` guardado por un modelo anterior es el informe de su época:
+# cita probabilidades «calibradas» (Platt, isotónica) y umbrales que el
+# sistema ya no sostiene. No se muestra en la web, el PDF, el correo ni la
+# API; en la base y en la exportación CSV queda sin cambios.
+NOTA_INFORME_ANTERIOR = (
+    "El informe de texto original de este análisis lo generó un modelo anterior "
+    "y no se muestra. Se conserva sin cambios en la base y en la exportación CSV."
+)
+
+
+def texto_del_informe(model_version, report_text) -> str:
+    """El informe de texto que se puede mostrar de un análisis."""
+    if es_modelo_vigente(model_version):
+        return report_text or ""
+    return NOTA_INFORME_ANTERIOR
+
 # Metadata para la UI de selección.
 #
 # CADA NÚMERO DE ACÁ TIENE UN ARTEFACTO, y tests/test_metadata_vs_artefactos.py

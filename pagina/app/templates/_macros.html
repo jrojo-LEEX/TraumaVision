@@ -391,7 +391,7 @@
 {#- `umbral` en none: resultado de un modelo que no es el vigente. La fila
     no lleva la marca del corte ni se clasifica contra él. -#}
 {%- macro finding_row(i, confidence, umbral) -%}
-<button type="button" class="find {{ 'is-low' if umbral is not none and confidence < umbral }}"
+<button type="button" class="find {{ 'is-neutral' if umbral is none else ('is-low' if confidence < umbral) }}"
         data-find="{{ i }}" aria-pressed="false"
         title="Resaltar esta zona sobre la placa · seguridad {{ ("%.3f"|format(confidence))|replace('.', ',') }} (score crudo)"
         aria-label="Zona marcada {{ i + 1 }}, seguridad {{ ("%.3f"|format(confidence))|replace('.', ',') }}{% if umbral is not none %}, {{ 'por debajo del' if confidence < umbral else 'sobre el' }} {{ corte_nombre() }} de {{ ("%.2f"|format(umbral))|replace('.', ',') }}{% endif %}. Resaltar sobre la placa.">
