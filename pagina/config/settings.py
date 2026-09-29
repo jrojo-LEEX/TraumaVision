@@ -56,6 +56,18 @@ SESSION_MAX_AGE_SECONDS = int(os.getenv("SESSION_MAX_AGE_SECONDS", str(8 * 3600)
 # obligatorio en true en cualquier despliegue con TLS.
 SESSION_HTTPS_ONLY = os.getenv("SESSION_HTTPS_ONLY", "false").lower() in ("1", "true", "yes")
 
+# --- Envío del informe por mail (opcional) ---
+# Con Gmail: SMTP_EMAIL es la cuenta y SMTP_PASSWORD una "contraseña de
+# aplicación" (no la contraseña normal). Si falta alguna, el botón de enviar
+# aparece desactivado y la página funciona igual.
+SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_EMAIL = os.getenv("SMTP_EMAIL", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+EMAIL_HABILITADO = bool(SMTP_EMAIL and SMTP_PASSWORD)
+# El PDF lleva la radiografía: se limita cuántos envíos puede hacer cada usuario por hora.
+EMAIL_POR_HORA = int(os.getenv("EMAIL_POR_HORA", "10"))
+
 # Orígenes permitidos para CORS. Nunca "*": con allow_credentials=True el
 # comodín es inválido por spec y el navegador rechaza la respuesta.
 CORS_ORIGINS = [

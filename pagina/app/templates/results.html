@@ -266,12 +266,42 @@
       </div>
     </details>
 
+    {% if mail_mensaje %}
+    <div class="alert {% if mail_estado == 'enviado' %}alert-info{% else %}alert-error{% endif %} mail-aviso" role="status">
+      {{ m.icon('info') }}<div>{{ mail_mensaje }}</div>
+    </div>
+    {% endif %}
+
     <div class="rd-actions">
       <a href="/analysis/{{ analysis_id }}/pdf" class="btn btn-sm btn-primary">{{ m.icon('file') }} Descargar PDF</a>
+      {% if email_habilitado %}
+      <button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('mail-dialogo').showModal()">Enviar por mail</button>
+      {% else %}
+      <button type="button" class="btn btn-sm btn-secondary" disabled
+              title="Para activarlo, completá SMTP_EMAIL y SMTP_PASSWORD en el archivo .env">Enviar por mail</button>
+      {% endif %}
       <a href="/analysis/upload" class="btn btn-sm btn-secondary">{{ m.icon('upload') }} Nuevo análisis</a>
       <a href="/analysis/history" class="btn btn-sm btn-secondary">{{ m.icon('back') }} Historial</a>
     </div>
   </aside>
 </div>
+
+{% if email_habilitado %}
+<dialog id="mail-dialogo" class="mail-dialogo" aria-labelledby="mail-titulo">
+  <form method="post" action="/analysis/{{ analysis_id }}/email">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <h3 id="mail-titulo">Enviar el informe por mail</h3>
+    <p class="field-hint">Se manda el mismo PDF que se descarga, con la imagen del estudio. Revisá la dirección antes de enviar.</p>
+    <div class="field-group">
+      <label class="field-label" for="mail-destino">Mail del destinatario</label>
+      <input type="email" id="mail-destino" name="destino" required autocomplete="email" placeholder="colega@hospital.com">
+    </div>
+    <div class="mail-botones">
+      <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Cancelar</button>
+      <button type="submit" class="btn btn-primary">Enviar</button>
+    </div>
+  </form>
+</dialog>
+{% endif %}
 
 {% endblock %}

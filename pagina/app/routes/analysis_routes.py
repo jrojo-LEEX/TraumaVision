@@ -7,6 +7,7 @@ analysis_routes.py — Rutas de análisis de radiografías.
   GET  /analysis/history             historial del usuario
   GET  /analysis/{id}/results        resultado guardado
   GET  /analysis/{id}/pdf            informe en PDF
+  POST /analysis/{id}/email          manda el informe PDF por mail
   GET  /analysis/study/{id}          resultado de un estudio
   GET  /analysis/imagen/{archivo}    sirve una imagen, previa verificación
 
@@ -33,6 +34,8 @@ from app.database.models import User
 from app.dependencies.auth import require_user
 from app.dependencies.csrf import get_csrf_token, verify_csrf
 from app.plantillas import crear_templates
+from app.services.email_service import enviar_informe
+from app.services.rate_limit import check_and_consume
 from app.services.routing_service import (
     calculate_urgency,
     imagen_mas_urgente,
@@ -44,6 +47,8 @@ from config.settings import (
     APP_NAME,
     CONFIDENCE_THRESHOLD,
     DEFAULT_REGION,
+    EMAIL_HABILITADO,
+    EMAIL_POR_HORA,
     MODELO_VIGENTE,
     LEGAL_DISCLAIMER,
     MAX_UPLOAD_SIZE_MB,
@@ -73,6 +78,13 @@ HISTORIAL_MAX_FILAS = 500
 
 _ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/bmp", "image/tiff", "application/dicom"}
 _SAFE_FILENAME_RE = re.compile(r"^[A-Za-z0-9_\-]+\.(png|jpg|jpeg)$")
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
+_MENSAJES_MAIL = {
+    "enviado": "Informe enviado por mail.",
+    "invalido": "La dirección de mail no es válida.",
+    "limite": "Llegaste al límite de envíos por hora. Probá más tarde.",
+    "error": "No se pudo enviar el mail. Revisá la configuración SMTP en el archivo .env.",
+}
 
 
 def _base_context(request: Request, user: User) -> dict:
@@ -374,6 +386,7 @@ async def serve_image(
 async def view_analysis(
     analysis_id: int,
     request: Request,
+    mail: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(require_user),
 ):
@@ -420,6 +433,9 @@ async def view_analysis(
             # alcance se atribuyen al modelo vigente, no a este resultado.
             "modelo_anterior": _modelo_anterior(analysis.anatomical_region, analysis.model_version),
             "feedback": crud.get_feedback_by_analysis(db, analysis.id),
+            "email_habilitado": EMAIL_HABILITADO,
+            "mail_estado": mail if mail in _MENSAJES_MAIL else None,
+            "mail_mensaje": _MENSAJES_MAIL.get(mail),
         },
     )
 
@@ -454,20 +470,12 @@ def _cargar_imagenes(analysis) -> tuple[Image.Image, Image.Image]:
     return original, anotada
 
 
-@router.get("/{analysis_id}/pdf")
-async def download_pdf(
-    analysis_id: int,
-    db: Session = Depends(get_db),
-    user: User = Depends(require_user),
-):
-    analysis = crud.get_analysis_for_user(db, analysis_id, user.id)
-    if not analysis:
-        raise HTTPException(status_code=404, detail="Análisis no encontrado.")
-
+def _pdf_del_analisis(analysis, user: User) -> bytes:
+    """El informe PDF de un análisis: el mismo para descargar y para mandar por mail."""
     from src.reports.generator import generate_pdf_report
 
     original, anotada = _cargar_imagenes(analysis)
-    pdf_bytes = generate_pdf_report(
+    return generate_pdf_report(
         original_image=original,
         annotated_image=anotada,
         report_text=_texto_del_informe(analysis),
@@ -481,11 +489,51 @@ async def download_pdf(
         model_version=analysis.model_version,
     )
 
+
+@router.get("/{analysis_id}/pdf")
+async def download_pdf(
+    analysis_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    analysis = crud.get_analysis_for_user(db, analysis_id, user.id)
+    if not analysis:
+        raise HTTPException(status_code=404, detail="Análisis no encontrado.")
+
+    pdf_bytes = _pdf_del_analisis(analysis, user)
+
     return StreamingResponse(
         BytesIO(pdf_bytes),
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename=traumavision_informe_{analysis.id}.pdf"},
     )
+
+
+@router.post("/{analysis_id}/email")
+async def send_email(
+    request: Request,
+    analysis_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user),
+    _: None = Depends(verify_csrf),
+):
+    analysis = crud.get_analysis_for_user(db, analysis_id, user.id)
+    if not analysis:
+        raise HTTPException(status_code=404, detail="Análisis no encontrado.")
+
+    destino = ((await request.form()).get("destino") or "").strip()
+    volver = f"/analysis/{analysis_id}/results?mail="
+    if not _EMAIL_RE.match(destino):
+        return RedirectResponse(url=volver + "invalido", status_code=303)
+    if not EMAIL_HABILITADO:
+        return RedirectResponse(url=volver + "error", status_code=303)
+    permitido, _restantes = check_and_consume(f"email:{user.id}", EMAIL_POR_HORA)
+    if not permitido:
+        return RedirectResponse(url=volver + "limite", status_code=303)
+
+    pdf = await run_in_threadpool(_pdf_del_analisis, analysis, user)
+    enviado = await run_in_threadpool(enviar_informe, destino, analysis.id, user.name, pdf)
+    return RedirectResponse(url=volver + ("enviado" if enviado else "error"), status_code=303)
 
 
 # ─── Estudios multi-imagen ───────────────────────────────────────────────────
