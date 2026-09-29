@@ -6,11 +6,15 @@
 {% block main_class %}main-stage{% endblock %}
 
 {% block head %}
-<script defer src="/static/js/viewer.js?v=19"></script>
+<script defer src="/static/js/viewer.js?v=20"></script>
 {% endblock %}
 
 {% block content %}
 {% set out_of_domain = region_key != default_region %}
+{# Muñeca con un modelo anterior: igual que en results.html, sin prioridad
+   ni corte de aviso, que son del modelo vigente. #}
+{% set sin_prioridad = out_of_domain or modelo_anterior %}
+{% set corte = none if sin_prioridad else abnormal_threshold %}
 {# El visor abre en la imagen de MAYOR URGENCIA, no en la primera del ZIP.
    Cuál es la decide `imagen_mas_urgente` en el servidor (es una decisión
    clínica, no de presentación) y llega como `initial_index`. Antes acá había
@@ -18,7 +22,7 @@
    abrirlo el panel anunciaba SIN HALLAZGOS. #}
 {% set first = (results | selectattr('index', 'equalto', initial_index) | first) if results else none %}
 {% set sin_hallazgos = total_images - images_with_findings %}
-{% set nivel_estudio = 'LOW' if out_of_domain else (urgencia_estudio.nivel if urgencia_estudio else 'LOW') %}
+{% set nivel_estudio = 'NEUTRO' if sin_prioridad else (urgencia_estudio.nivel if urgencia_estudio else 'LOW') %}
 
 {# La barra del estudio es la única cabecera. Antes había además un bloque
    de avisos apilados debajo que empujaba el visor hacia abajo y repetía,
@@ -34,7 +38,7 @@
        quemado de la película, y acá no hay película. Fuera de la placa la
        app no lleva ni un rótulo así. #}
     <p class="meta-line study-verdict {{ m.verdict_class(nivel_estudio) }}">
-      {{ m.urgency_rule(nivel_estudio, neutro=out_of_domain) }}
+      {{ m.urgency_rule(nivel_estudio, neutro=sin_prioridad) }}
       <strong>{{ m.verdict_word(nivel_estudio) }}</strong>
       <span class="ov-key">en el estudio</span>
     </p>
@@ -71,6 +75,17 @@
     </div>
   </div>
 </div>
+{% elif modelo_anterior %}
+<div class="study-alerts">
+  <div class="domain-flag" style="margin-bottom:0;">
+    {{ m.icon('alert') }}
+    <div>
+      <strong>Modelo anterior.</strong>
+      Análisis hecho con un modelo anterior (<code>{{ model_version or 'sin registrar' }}</code>),
+      que ya no está en uso. No se informa prioridad clínica.
+    </div>
+  </div>
+</div>
 {% endif %}
 
 {% if not results %}
@@ -92,8 +107,8 @@
        decisión. Ver la nota en el macro sobre por qué NO usa
        data-panel-idx. #}
     {% for r in results %}
-    {%- set n = 'LOW' if out_of_domain else r.urgency.nivel -%}
-    {{ m.verdict_strip(n, neutro=out_of_domain, idx=r.index, oculto=r.index != initial_index,
+    {%- set n = 'NEUTRO' if sin_prioridad else r.urgency.nivel -%}
+    {{ m.verdict_strip(n, neutro=sin_prioridad, idx=r.index, oculto=r.index != initial_index,
                        is_abnormal=r.is_abnormal) }}
     {% endfor %}
 
@@ -126,8 +141,8 @@
       </div>
     </div>
 
-    <!-- Tira de imágenes. Cada cuadro lleva SUS cajas: al cambiar de imagen
-         el visor las redibuja sin volver al servidor. -->
+    {# Tira de imágenes. Cada cuadro lleva SUS cajas: al cambiar de imagen
+         el visor las redibuja sin volver al servidor. #}
     <div class="filmstrip" data-filmstrip role="tablist" aria-label="Imágenes del estudio">
       {% for r in results %}
       <button type="button"
@@ -178,7 +193,7 @@
     {# La clave real es `is_abnormal`. La plantilla original leía
        `r.has_finding`, que no existe en ningún archivo Python: Jinja lo
        resolvía a Undefined (falsy) y TODAS las tarjetas salían "Normal". #}
-    {% set nivel = 'LOW' if out_of_domain else r.urgency.nivel %}
+    {% set nivel = 'NEUTRO' if sin_prioridad else r.urgency.nivel %}
     <div class="panel-img" data-panel-idx="{{ r.index }}" {% if r.index != initial_index %}hidden{% endif %}>
 
       {# Sin cabecera propia: qué imagen se está viendo ya lo dicen el
@@ -189,11 +204,13 @@
         {# De QUÉ imagen habla este veredicto. Sin decirlo se lee como el del
            estudio entero, que es el que está arriba en la barra. #}
         <p class="eyebrow">Imagen {{ r.index }} de {{ total_images }}</p>
-        {{ m.urgency_rule(nivel, neutro=out_of_domain) }}
+        {{ m.urgency_rule(nivel, neutro=sin_prioridad) }}
         <p class="verdict-word">{{ m.verdict_word(nivel) }}</p>
         <p class="verdict-sub">
           {%- if out_of_domain -%}
             Clasificación heredada de un modelo retirado.
+          {%- elif modelo_anterior -%}
+            Clasificación de un modelo anterior.
           {%- else -%}
             {{ m.verdict_sub(nivel, abnormal_threshold) }}
           {%- endif -%}
@@ -207,16 +224,20 @@
       <div class="finds">
         <div class="find-head">
           <h2 class="finds-title">Zonas marcadas</h2>
+          {% if not sin_prioridad %}
           <span class="find-count"><span class="num">{{ r.significant_count }}</span> sobre el {{ m.corte_nombre() }}</span>
+          {% else %}
+          <span class="find-count"><span class="num">{{ r.boxes|length }}</span> {{ 'zona' if r.boxes|length == 1 else 'zonas' }}</span>
+          {% endif %}
         </div>
         {# Misma razón que en results.html: el rótulo que dice qué es este
            número va a la vista.
            El corte es el que dibuja la marca en cada barra. #}
-        {{ m.find_unit(abnormal_threshold) }}
+        {{ m.find_unit(corte) }}
         {% if r.boxes %}
         <div class="find-list" data-find-list>
           {% for b in r.boxes %}
-          {{ m.finding_row(loop.index0, b.confidence, abnormal_threshold) }}
+          {{ m.finding_row(loop.index0, b.confidence, corte) }}
           {% endfor %}
         </div>
         <p class="find-hint" data-find-hint hidden>
@@ -225,7 +246,8 @@
         {% endif %}
       </div>
 
-      {{ m.alcance_clinico(model_sensitivity, dominio_label) }}
+      {{ m.alcance_clinico(model_sensitivity, dominio_label,
+                           modelo_vigente=modelo_vigente if sin_prioridad else none) }}
 
       <details class="quiet">
         <summary>{{ m.icon('chevron', 'chev') }}
@@ -235,8 +257,10 @@
         <div class="quiet-body">
           <dl class="kv">
             <dt>Archivo</dt><dd style="word-break:break-all;">{{ r.source_filename }}</dd>
+            {% if not sin_prioridad %}
             <dt>Sobre el {{ m.corte_nombre() }}</dt><dd>{{ r.significant_count }}</dd>
             <dt>Baja confianza</dt><dd>{{ r.low_confidence_count }}</dd>
+            {% endif %}
             <dt>Score crudo máx.</dt><dd>{{ m.conf_display(r.max_detection_confidence, r.significant_count) }}</dd>
             <dt>Inferencia</dt><dd>{{ "%.0f"|format(r.inference_time_ms) }} ms</dd>
           </dl>

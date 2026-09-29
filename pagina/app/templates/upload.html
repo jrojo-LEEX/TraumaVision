@@ -4,7 +4,7 @@
 {% block title %}Cargar estudio · {{ app_name }}{% endblock %}
 
 {% block head %}
-<script defer src="/static/js/upload.js?v=4"></script>
+<script defer src="/static/js/upload.js?v=5"></script>
 {% endblock %}
 
 {% block content %}
@@ -30,7 +30,7 @@
   </button>
 </div>
 
-<!-- ══════ Imagen individual ══════ -->
+{# ══════ Imagen individual ══════ #}
 <div data-panel-tab="single">
   <form action="/analysis/upload" method="post" enctype="multipart/form-data" id="upload-form-single">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -93,8 +93,9 @@
         </summary>
         <div class="quiet-body stack">
           <p class="field-hint" style="margin-top:0;">
-            Cada modelo se entrenó con un conjunto de radiografías propio. Fuera de
-            esa región del cuerpo, su comportamiento no está validado.
+            El sistema usa un único modelo, entrenado con radiografías de muñeca
+            pediátrica. Fuera de esa región del cuerpo y de ese rango de edad, su
+            comportamiento no está validado.
           </p>
           {% for key, meta in model_metadata.items() %}
           <div>
@@ -126,7 +127,7 @@
   </form>
 </div>
 
-<!-- ══════ Estudio ZIP ══════ -->
+{# ══════ Estudio ZIP ══════ #}
 <div data-panel-tab="study" hidden>
   <form action="/analysis/upload-study" method="post" enctype="multipart/form-data" id="upload-form-study">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -168,11 +169,11 @@
   </ul>
 </div>
 
-<!-- Overlay de progreso.
+{# Overlay de progreso.
      La placa muestra la imagen que el usuario acaba de entregar, con la banda
      de lectura recorriéndola. No hay porcentaje ni barra que se llene: el
      backend no reporta progreso y fingirlo sería inventar estado del sistema.
-     Lo único cuantitativo acá es el cronómetro, y es real. -->
+     Lo único cuantitativo acá es el cronómetro, y es real. #}
 <div id="progress-overlay" class="progress-overlay" role="status" aria-live="polite">
   <div class="progress-box">
     <div class="scanplate" data-scanplate aria-hidden="true">
@@ -186,7 +187,7 @@
     </div>
     <p class="progress-title" id="progress-title">Analizando la radiografía</p>
     <p class="progress-detail" id="progress-detail">
-      El modelo tarda unos segundos en CPU. No cierres ni recargues esta página.
+      El modelo tarda unos segundos. No cierres ni recargues esta página.
     </p>
     {# aria-live="off" a propósito: este párrafo vive dentro de una región
        role="status" y el cronómetro cambia una vez por segundo. Sin esto, un

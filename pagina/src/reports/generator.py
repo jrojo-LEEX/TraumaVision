@@ -149,6 +149,9 @@ def generate_pdf_report(
     # validado. Omitir el argumento es otra cosa: informe genérico.
     region=REGION_NO_INDICADA,
     created_at: datetime | None = None,
+    # Mismo centinela: omitido, el informe habla del modelo vigente. Con el
+    # modelo del análisis, uno hecho con un modelo anterior lo declara.
+    model_version=REGION_NO_INDICADA,
 ) -> bytes:
     """
     Genera un informe PDF con los resultados del análisis.
@@ -277,7 +280,7 @@ def generate_pdf_report(
     # Va acá, pegada a los hallazgos, y no en el pie: es la salvedad que
     # califica lo que se acaba de leer. El texto se deriva de la metadata del
     # modelo (config/settings.py) — ningún número está escrito acá.
-    elements.append(P(domain_disclaimer(region), scope_style))
+    elements.append(P(domain_disclaimer(region, model_version), scope_style))
 
     # --- Disclaimer ---
     # La regla de separación era "─" * 80: ochenta cuadrados negros, porque

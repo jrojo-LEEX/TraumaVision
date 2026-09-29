@@ -6,6 +6,11 @@ actividad por usuario, acuerdo médico-IA por perfil, totales, y exportación
 CSV de todo el sistema. Es la única pantalla que cruza datos de más de un
 usuario — el resto de la app aísla cada cuenta a su propia práctica.
 
+Los totales, el acuerdo y la actividad por usuario cuentan SÓLO análisis del
+modelo vigente (y sus opiniones); la pantalla dice cuántos anteriores quedaron
+afuera. Las exportaciones CSV siguen completas: son datos crudos y traen la
+columna del modelo.
+
 El flag is_admin existía en el modelo desde la migración 002 pero ninguna
 pantalla lo usaba: este panel le da el propósito.
 """
@@ -17,6 +22,8 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy import Integer, cast, func
 from sqlalchemy.orm import Session, selectinload
 
+from app.database import crud
+from app.database.crud import condicion_vigente
 from app.database.db import get_db
 from app.database.models import Analysis, Feedback, User
 from app.dependencies.auth import require_admin
@@ -29,7 +36,7 @@ from app.routes.dashboard_routes import (
     filas_opiniones,
     respuesta_csv,
 )
-from config.settings import APP_NAME, LEGAL_DISCLAIMER, MODEL_METADATA
+from config.settings import APP_NAME, LEGAL_DISCLAIMER, MODEL_METADATA, MODELO_VIGENTE
 from config.tiempo import ahora_utc_naive
 # Las proporciones del panel pasan por el MISMO embudo que las de Métricas:
 # denominador siempre a la vista y, por debajo de N_MINIMO, recuento crudo en
@@ -77,7 +84,7 @@ def _resumen_por_usuario(db: Session) -> list[dict]:
             func.count(Analysis.id),
             _suma_de_booleana(Analysis.is_abnormal),
             func.max(Analysis.created_at),
-        ).group_by(Analysis.user_id)
+        ).filter(condicion_vigente()).group_by(Analysis.user_id)
     }
     opiniones = {
         uid: (total, acuerdos)
@@ -87,6 +94,7 @@ def _resumen_por_usuario(db: Session) -> list[dict]:
             _suma_de_booleana(Feedback.agreed),
         )
         .join(Analysis, Feedback.analysis_id == Analysis.id)
+        .filter(condicion_vigente())
         .group_by(Analysis.user_id)
     }
 
@@ -125,12 +133,20 @@ async def admin_panel(
 ):
     filas = _resumen_por_usuario(db)
 
-    total = db.query(func.count(Analysis.id)).scalar() or 0
-    anormales = db.query(func.count(Analysis.id)).filter(Analysis.is_abnormal.is_(True)).scalar() or 0
-    n_fb = db.query(func.count(Feedback.id)).scalar() or 0
-    acuerdos = db.query(func.count(Feedback.id)).filter(Feedback.agreed.is_(True)).scalar() or 0
+    # Sólo el modelo vigente. Las opiniones se cuentan por el análisis que
+    # opinan: una opinión sobre un análisis de v2 no es acuerdo con v1r.
+    analisis = db.query(func.count(Analysis.id)).filter(condicion_vigente())
+    opiniones = (
+        db.query(func.count(Feedback.id))
+        .join(Analysis, Feedback.analysis_id == Analysis.id)
+        .filter(condicion_vigente())
+    )
+    total = analisis.scalar() or 0
+    anormales = analisis.filter(Analysis.is_abnormal.is_(True)).scalar() or 0
+    n_fb = opiniones.scalar() or 0
+    acuerdos = opiniones.filter(Feedback.agreed.is_(True)).scalar() or 0
     hace_30 = _hace_treinta_dias()
-    recientes = db.query(func.count(Analysis.id)).filter(Analysis.created_at >= hace_30).scalar() or 0
+    recientes = analisis.filter(Analysis.created_at >= hace_30).scalar() or 0
     desacuerdos = n_fb - acuerdos
 
     return templates.TemplateResponse(
@@ -155,6 +171,8 @@ async def admin_panel(
             # stats.py, no se escribe en la plantilla.
             "n_minimo": N_MINIMO,
             "model_metadata": MODEL_METADATA,
+            "modelo_vigente": MODELO_VIGENTE,
+            "n_anteriores": crud.count_analyses_anteriores(db),
         },
     )
 
@@ -164,7 +182,10 @@ async def export_analisis_global(
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> StreamingResponse:
-    """Todos los análisis del sistema, con la columna de usuario agregada."""
+    """Todos los análisis del sistema, con la columna de usuario agregada.
+
+    Completo a propósito, también los de modelos anteriores: es el dato crudo
+    y trae la columna `modelo`."""
     filas = []
     # Igual que el export propio: `filas_analisis` recorre las cajas de cada
     # análisis. Acá pesa el doble, porque son los 600 del sistema entero.

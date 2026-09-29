@@ -6,25 +6,29 @@
 {% block main_class %}main-stage{% endblock %}
 
 {% block head %}
-<script defer src="/static/js/viewer.js?v=19"></script>
+<script defer src="/static/js/viewer.js?v=20"></script>
 {% endblock %}
 
 {% block content %}
 {# El registro pertenece al dominio validado sólo si su región es la del
    modelo vivo. Los análisis con región NULL o de modelos retirados no
-   muestran prioridad clínica: sus métricas no son las del modelo vivo. #}
+   muestran prioridad clínica: sus métricas no son las del modelo vivo.
+   Tampoco los de muñeca hechos con un modelo anterior (`modelo_anterior`):
+   la prioridad y el corte de aviso son del modelo vigente, no suyos. #}
 {% set out_of_domain = region_key != default_region %}
+{% set sin_prioridad = out_of_domain or modelo_anterior %}
 {% set conf = analysis.max_detection_confidence or 0 %}
-{% set nivel = 'LOW' if out_of_domain else urgency.nivel %}
+{% set nivel = 'NEUTRO' if sin_prioridad else urgency.nivel %}
+{% set corte = none if sin_prioridad else abnormal_threshold %}
 
 <div class="reader" data-viewer>
 
-  <!-- ══════════ Visor ══════════ -->
+  {# ══════════ Visor ══════════ #}
   <section class="stage" aria-label="Visor de la radiografía">
     {{ m.viewer_toolbar() }}
     {# Sólo se ve en una columna, donde el panel de lectura cae bajo el
        pliegue. Arriba del breakpoint el veredicto ya está en el panel. #}
-    {{ m.verdict_strip(nivel, neutro=out_of_domain, is_abnormal=is_abnormal) }}
+    {{ m.verdict_strip(nivel, neutro=sin_prioridad, is_abnormal=is_abnormal) }}
 
     <div class="viewport" data-viewport tabindex="0"
          aria-label="Radiografía del análisis {{ analysis_id }}. Usá las flechas para desplazar, más y menos para el zoom.">
@@ -90,9 +94,9 @@
      pertenece a ninguna de las dos, separa. #}
   <div class="split" aria-hidden="true"></div>
 
-  <!-- ══════════ Panel de lectura ══════════
+  {# ══════════ Panel de lectura ══════════
        Tres zonas y dos hairlines. Nada de tarjetas apiladas: lo que pesa,
-       pesa por tamaño y por aire. El triage está entero en el cuadro cero. -->
+       pesa por tamaño y por aire. El triage está entero en el cuadro cero. #}
   <aside class="readout" data-find-host
          aria-label="Resultado del análisis"
          data-boxes="{{ boxes_json }}"
@@ -118,15 +122,26 @@
         retirado del sistema. No se informa prioridad clínica.
       </div>
     </div>
+    {% elif modelo_anterior %}
+    <div class="domain-flag">
+      {{ m.icon('alert') }}
+      <div>
+        <strong>Modelo anterior.</strong>
+        Análisis hecho con un modelo anterior (<code>{{ model_version or 'sin registrar' }}</code>),
+        que ya no está en uso. No se informa prioridad clínica.
+      </div>
+    </div>
     {% endif %}
 
-    <!-- ── 1. TRIAGE ── -->
+    {# ── 1. TRIAGE ── #}
     <div class="triage {{ m.verdict_class(nivel) }}">
-      {{ m.urgency_rule(nivel, neutro=out_of_domain) }}
+      {{ m.urgency_rule(nivel, neutro=sin_prioridad) }}
       <p class="verdict-word">{{ m.verdict_word(nivel) }}</p>
       <p class="verdict-sub">
         {%- if out_of_domain -%}
           Clasificación heredada de un modelo retirado. No debe usarse para ordenar la revisión.
+        {%- elif modelo_anterior -%}
+          Clasificación de un modelo anterior. No debe usarse para ordenar la revisión.
         {%- else -%}
           {{ m.verdict_sub(nivel, abnormal_threshold) }}
         {%- endif -%}
@@ -135,7 +150,7 @@
       {{ m.scope_line(is_abnormal) }}
     </div>
 
-    <!-- ── 2. ZONAS MARCADAS, ligadas a la placa ──
+    {# ── 2. ZONAS MARCADAS, ligadas a la placa ──
          Sin <hr> arriba: lo que separa el triage de las zonas marcadas es
          el aire. El único filete horizontal del panel es el que abre el
          grupo de plegables, más abajo.
@@ -143,22 +158,26 @@
          El rótulo es llano —«Zonas marcadas», «seguridad»— porque es la
          superficie de la pantalla. El nombre técnico del número no se
          borra: vive un renglón abajo, en `find_unit`, y en el `title` de
-         cada fila. Simplificar es jerarquizar, no esconder. -->
+         cada fila. Simplificar es jerarquizar, no esconder. #}
     <div class="finds">
       <div class="find-head">
         <h2 class="finds-title">Zonas marcadas</h2>
+        {% if not sin_prioridad %}
         <span class="find-count"><span class="num">{{ significant_boxes|length }}</span> sobre el {{ m.corte_nombre() }}</span>
+        {% else %}
+        <span class="find-count"><span class="num">{{ boxes|length }}</span> {{ 'zona' if boxes|length == 1 else 'zonas' }}</span>
+        {% endif %}
       </div>
       {# La aclaración estaba plegada dentro de "Detalle técnico". Es la que
          impide leer la seguridad como riesgo, y no puede estar detrás de un
          clic. Debajo de 860 esta misma frase, comprimida, va además en la franja
          fija del visor: acá cae bajo el pliegue. #}
-      {{ m.find_unit(abnormal_threshold) }}
+      {{ m.find_unit(corte) }}
 
       {% if boxes %}
       <div class="find-list" data-find-list>
         {% for b in boxes|sort(attribute='confidence', reverse=true) %}
-        {{ m.finding_row(loop.index0, b.confidence, abnormal_threshold) }}
+        {{ m.finding_row(loop.index0, b.confidence, corte) }}
         {% endfor %}
       </div>
       <p class="find-hint" data-find-hint hidden>
@@ -166,12 +185,13 @@
       </p>
       {% else %}
       <p class="find-empty">El detector no marcó ninguna zona
-        (mínimo para dibujar: {{ "%.0f"|format(confidence_threshold * 100) }}&nbsp;%).</p>
+        (mínimo para dibujar: {{ ("%.2f"|format(confidence_threshold))|replace('.', ',') }}).</p>
       {% endif %}
     </div>
 
-    <!-- ── 3. TODO LO DEMÁS, plegado ── -->
-    {{ m.alcance_clinico(model_sensitivity, dominio_label) }}
+    {# ── 3. TODO LO DEMÁS, plegado ── #}
+    {{ m.alcance_clinico(model_sensitivity, dominio_label,
+                         modelo_vigente=modelo_vigente if sin_prioridad else none) }}
 
     <details class="quiet">
       <summary>{{ m.icon('chevron', 'chev') }}
@@ -183,6 +203,7 @@
           <dd>{{ m.conf_display(conf, boxes|length) }}</dd>
           <dt>Regiones dibujadas</dt>
           <dd>{{ boxes|length }}</dd>
+          {% if not sin_prioridad %}
           <dt>Sobre el {{ m.corte_nombre() }}</dt>
           <dd>{{ significant_boxes|length }}</dd>
           <dt>Baja confianza</dt>
@@ -191,6 +212,7 @@
           <dd>{{ ("%.2f"|format(confidence_threshold))|replace('.', ',') }}</dd>
           <dt>Umbral de anormalidad ({{ m.corte_nombre() }})</dt>
           <dd>{{ ("%.2f"|format(abnormal_threshold))|replace('.', ',') }}</dd>
+          {% endif %}
           <dt>Modelo</dt>
           <dd>{{ model_version or 'sin registrar' }}</dd>
           <dt>Región</dt>

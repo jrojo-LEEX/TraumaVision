@@ -3854,14 +3854,9 @@ select {
   margin-bottom: var(--s-2);
 }
 .mx-inline { margin-top: var(--s-5); }
-.mx-vers { margin-top: var(--s-6); padding-top: var(--s-5); border-top: 1px solid var(--rule); }
-.vers-list { list-style: none; display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-5); }
-.vers-list li {
-  display: inline-flex; align-items: baseline; gap: 6px;
-  font-size: var(--fs-sm);
-  color: var(--text-3);
-}
-.vers-list .num { color: var(--ink); font-weight: 600; font-size: var(--fs-base); }
+/* Alcance de Métricas: sólo el modelo vigente. Una línea discreta bajo la
+   cabecera; los análisis anteriores siguen en el historial. */
+.dash-scope { margin: var(--s-4) 0 0; }
 
 /* ─── 38.a.1 El dato principal ──────────────────────────────────────
    Un número, su rótulo arriba y SU DENOMINADOR abajo. El denominador no es

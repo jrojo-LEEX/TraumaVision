@@ -73,6 +73,14 @@ class PredictionResult:
         return [b for b in self.boxes if b.confidence < ABNORMAL_THRESHOLD]
 
 
+def _coma(x: float) -> str:
+    """Score del detector en la escala 0-1 de la app, con coma decimal.
+
+    Con "%" se lee como riesgo, y no es una probabilidad de fractura.
+    """
+    return f"{x:.2f}".replace(".", ",")
+
+
 def apply_clahe_rgb(pil_image: Image.Image) -> Image.Image:
     """Aplica CLAHE igual que el pipeline de entrenamiento.
 
@@ -216,10 +224,12 @@ class FractureDetector:
             else:
                 self._dashed_rectangle(out, (b.x1, b.y1), (b.x2, b.y2), color, grosor)
 
+            # Escala 0-1, como en el resto de la app: con "%" el score se
+            # lee como riesgo, y no es una probabilidad de fractura.
             etiqueta = (
-                f"Hallazgo {b.confidence:.0%}"
+                f"Hallazgo {b.confidence:.2f}"
                 if significativa
-                else f"Baja conf. {b.confidence:.0%}"
+                else f"Baja conf. {b.confidence:.2f}"
             )
             (tw, th), _ = cv2.getTextSize(etiqueta, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
             y_texto = max(b.y1, th + 6)
@@ -296,8 +306,9 @@ class FractureDetector:
             f"({result.model_version}), preprocesamiento "
             f"{'CLAHE' if result.clahe_applied else 'sin realce'}, "
             f"en {result.inference_time_ms:.0f} ms.",
-            f"Umbral de señalización: {self.confidence_threshold:.0%} · "
-            f"umbral de anormalidad: {self.abnormal_threshold:.0%}.",
+            f"Umbral de señalización: {_coma(self.confidence_threshold)} · "
+            f"umbral de anormalidad: {_coma(self.abnormal_threshold)} "
+            "(score del detector, escala 0-1).",
             "",
             "HALLAZGOS",
         ]
@@ -313,7 +324,7 @@ class FractureDetector:
                     f"{i}. Imagen compatible con trazo de fractura, "
                     f"{self._tamano_relativo(b, ancho, alto)}, en el "
                     f"{self._ubicacion_en_imagen(b, ancho, alto)} "
-                    f"(confianza del detector: {b.confidence:.0%})."
+                    f"(seguridad del detector: {_coma(b.confidence)})."
                 )
             if bajas:
                 lineas.append("")
@@ -325,7 +336,7 @@ class FractureDetector:
                 for b in bajas:
                     lineas.append(
                         f"   • {self._ubicacion_en_imagen(b, ancho, alto)} "
-                        f"({b.confidence:.0%})"
+                        f"({_coma(b.confidence)})"
                     )
 
         lineas += ["", "IMPRESIÓN"]

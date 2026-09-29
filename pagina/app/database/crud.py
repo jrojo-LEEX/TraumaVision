@@ -16,6 +16,17 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.database.models import Analysis, ApiKey, DetectionBox, Feedback, Study, User
 from app.security import generate_api_key, hash_api_key, hash_password, verify_password
+from config.settings import VERSIONES_VIGENTES
+
+
+def condicion_vigente():
+    """Filtro SQL: el análisis se hizo con el modelo vigente.
+
+    Es la misma regla que `config.settings.es_modelo_vigente`, escrita para
+    la base. Las métricas y resúmenes cuentan sólo estos; el historial y las
+    exportaciones CSV siguen trayendo todos.
+    """
+    return Analysis.model_version.in_(sorted(VERSIONES_VIGENTES))
 
 
 def _utcnow() -> datetime:
@@ -144,6 +155,17 @@ def count_analyses_by_user(db: Session, user_id: int) -> int:
     )
 
 
+def count_analyses_anteriores(db: Session, user_id: Optional[int] = None) -> int:
+    """Análisis hechos con un modelo que no es el vigente (incluye los que no
+    registraron modelo). Sin `user_id`, los del sistema entero (panel admin)."""
+    consulta = db.query(func.count(Analysis.id)).filter(
+        (Analysis.model_version.is_(None)) | ~condicion_vigente()
+    )
+    if user_id is not None:
+        consulta = consulta.filter(Analysis.user_id == user_id)
+    return consulta.scalar() or 0
+
+
 def get_analyses_by_user(db: Session, user_id: int, limit: int = 50) -> list[Analysis]:
     """Los análisis del usuario, con sus cajas y su opinión ya cargadas.
 
@@ -166,10 +188,14 @@ def get_analyses_by_user(db: Session, user_id: int, limit: int = 50) -> list[Ana
 
 
 def get_analyses_for_stats(db: Session, user_id: int, limit: int = 1000) -> list[Analysis]:
-    """Análisis del usuario, para el dashboard."""
+    """Análisis del usuario hechos con el modelo vigente, para el dashboard.
+
+    Los de modelos anteriores no entran: mezclados, la pantalla mostraba
+    métricas de modelos viejos como si fueran del actual.
+    """
     return (
         db.query(Analysis)
-        .filter(Analysis.user_id == user_id)
+        .filter(Analysis.user_id == user_id, condicion_vigente())
         .order_by(Analysis.created_at.desc())
         .limit(limit)
         .all()

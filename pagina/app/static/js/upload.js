@@ -102,7 +102,7 @@
       });
     });
 
-    /* Overlay de progreso: la inferencia tarda segundos en CPU y un estudio
+    /* Overlay de progreso: la inferencia tarda segundos y un estudio
        puede tardar minutos. Sin señal visible parece colgado. */
     var overlay = document.getElementById('progress-overlay');
     if (!overlay) return;
@@ -146,7 +146,7 @@
       formSingle.addEventListener('submit', function () {
         var input = document.getElementById('file-input-single');
         mostrar('Analizando la radiografía',
-                'El modelo tarda unos segundos en CPU. No cierres ni recargues esta página.',
+                'El modelo tarda unos segundos. No cierres ni recargues esta página.',
                 input && input.files.length ? input.files[0] : null);
       });
     }

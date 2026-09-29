@@ -94,7 +94,10 @@ def confidence_distribution(analyses: list[dict], bins: int = 10) -> dict:
 
     import numpy as np
     counts, bin_edges = np.histogram(confidences, bins=bins, range=(0, 1))
-    labels = [f"{bin_edges[i]*100:.0f}%-{bin_edges[i+1]*100:.0f}%" for i in range(len(counts))]
+    # Escala 0–1, como la muestra el resto de la app: con «%» el score se
+    # lee como riesgo, y no es una probabilidad de fractura.
+    coma = lambda x: f"{x:.1f}".replace(".", ",")  # noqa: E731
+    labels = [f"{coma(bin_edges[i])}–{coma(bin_edges[i+1])}" for i in range(len(counts))]
 
     return {"labels": labels, "values": counts.tolist()}
 
@@ -300,7 +303,11 @@ def _percentil(valores: list[float], p: float) -> Optional[float]:
 
 
 def desempeno_sistema(registros: list[dict]) -> dict:
-    """Cuánto tarda el sistema, y con qué modelo lo hizo.
+    """Cuánto tarda el sistema.
+
+    Los registros ya vienen filtrados al modelo vigente, así que no hay
+    versiones que listar: acá había un recuento por modelo que mezclaba los
+    viejos con el actual.
 
     La MEDIANA y no el promedio: un solo estudio lento —la primera inferencia
     después de arrancar carga los pesos y puede tardar diez veces más— corre
@@ -309,15 +316,12 @@ def desempeno_sistema(registros: list[dict]) -> dict:
     """
     tiempos = [r["inference_time_ms"] for r in registros
                if r.get("inference_time_ms")]
-    versiones = Counter(r.get("model_version") or "sin registrar" for r in registros)
 
     return {
         "n": len(tiempos),
         "mediana_ms": _percentil(tiempos, 0.50),
         "p95_ms": _percentil(tiempos, 0.95),
         "max_ms": max(tiempos) if tiempos else None,
-        "versiones": [{"version": v, "n": c}
-                      for v, c in versiones.most_common()],
     }
 
 

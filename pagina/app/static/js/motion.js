@@ -113,7 +113,7 @@
      visor). Bloqueando el contenedor entero queda protegido lo que hay
      adentro hoy y lo que se mude adentro mañana. */
   var CUADRO_CERO = [
-    '.verdict-strip',   /* franja del visor: veredicto + probabilidad + salvedad */
+    '.verdict-strip',   /* franja del visor: veredicto + salvedades */
     '.triage',          /* panel de lectura: la palabra, el medidor, la salvedad */
     '.gauge',           /* el medidor y su número */
     '.scope-line',      /* «confirmar con lectura médica» */

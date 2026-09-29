@@ -47,6 +47,7 @@ from config.settings import (
     CONFIDENCE_THRESHOLD,
     DEFAULT_REGION,
     EMAIL_RATE_LIMIT_PER_HOUR,
+    MODELO_VIGENTE,
     LEGAL_DISCLAIMER,
     MAX_UPLOAD_SIZE_MB,
     MAX_ZIP_SIZE_MB,
@@ -55,6 +56,7 @@ from config.settings import (
     REGION_LABELS,
     SMTP_EMAIL,
     UPLOADS_DIR,
+    es_modelo_vigente,
 )
 
 router = APIRouter()
@@ -102,8 +104,22 @@ def _base_context(request: Request, user: User) -> dict:
         # metadata a mano los deriva igual que el dashboard. Es `None` si la
         # región no está publicada, y entonces el bloque no cita métricas.
         "meta": MODEL_METADATA.get(DEFAULT_REGION),
+        # El modelo vigente, para que el bloque de alcance de un análisis
+        # hecho con otro modelo diga de quién son las métricas que cita.
+        "modelo_vigente": MODELO_VIGENTE,
         "csrf_token": get_csrf_token(request),
     }
+
+
+def _modelo_anterior(region, model_version) -> bool:
+    """Análisis de la región validada hecho con un modelo que ya no está en uso.
+
+    Distinto de «fuera del dominio» (región retirada o sin registrar), que ya
+    tenía su aviso: éste es el caso de muñeca con v1, v2 o un registro viejo.
+    Se muestra con cajas e imagen, pero sin prioridad de triage ni el corte de
+    aviso del modelo vigente, que no son suyos.
+    """
+    return region == DEFAULT_REGION and not es_modelo_vigente(model_version)
 
 
 def _boxes_json(boxes) -> str:
@@ -307,6 +323,8 @@ async def history_page(
             "total_registros": crud.count_analyses_by_user(db, user_id=user.id),
             # Para marcar en la tabla los registros de modelos retirados.
             "default_region": DEFAULT_REGION,
+            # Para marcar «modelo anterior» y filtrar por el vigente.
+            "vigentes": {a.id for a in analyses if es_modelo_vigente(a.model_version)},
         },
     )
 
@@ -409,6 +427,10 @@ async def view_analysis(
             "region_key": analysis.anatomical_region,
             "default_region": DEFAULT_REGION,
             "model_version": analysis.model_version,
+            # Muñeca, pero con un modelo que ya no está en uso (v1, v2, ...):
+            # sin prioridad de triage ni corte de aviso, y las métricas del
+            # alcance se atribuyen al modelo vigente, no a este resultado.
+            "modelo_anterior": _modelo_anterior(analysis.anatomical_region, analysis.model_version),
             "feedback": crud.get_feedback_by_analysis(db, analysis.id),
             "email_message": email_message,
             "email_enabled": bool(SMTP_EMAIL),
@@ -447,6 +469,8 @@ async def download_pdf(
         # con un modelo retirado no puede exhibir las métricas del actual.
         region=analysis.anatomical_region,
         created_at=analysis.created_at,
+        # Y su modelo: uno de muñeca hecho con un modelo anterior lo declara.
+        model_version=analysis.model_version,
     )
 
     return StreamingResponse(
@@ -492,6 +516,8 @@ async def send_email_report(
         # con un modelo retirado no puede exhibir las métricas del actual.
         region=analysis.anatomical_region,
         created_at=analysis.created_at,
+        # Y su modelo: uno de muñeca hecho con un modelo anterior lo declara.
+        model_version=analysis.model_version,
     )
 
     # SMTP es un socket bloqueante (con timeout, pero de 20 s): fuera del
@@ -684,7 +710,10 @@ async def view_study(
     # Fuera del dominio validado la plantilla neutraliza TODOS los veredictos
     # (la urgencia la calculó un modelo retirado y no ordena nada), así que no
     # hay ninguna imagen que priorizar: se abre en la primera.
-    fuera_de_dominio = study.anatomical_region != DEFAULT_REGION
+    fuera_de_dominio = (
+        study.anatomical_region != DEFAULT_REGION
+        or _modelo_anterior(study.anatomical_region, study.model_version)
+    )
     inicial = (
         resultados[0]["index"] if (fuera_de_dominio and resultados)
         else imagen_mas_urgente(resultados)
@@ -710,6 +739,7 @@ async def view_study(
             "region_key": study.anatomical_region,
             "default_region": DEFAULT_REGION,
             "model_version": study.model_version,
+            "modelo_anterior": _modelo_anterior(study.anatomical_region, study.model_version),
             "results": resultados,
         },
     )

@@ -71,11 +71,25 @@
   </div>
 </header>
 
-<!-- ══════════ 1. ACUERDO ══════════════════════════════════════════════
+{# Todas las secciones de práctica cuentan SÓLO los análisis del modelo
+   vigente. Los anteriores no se borraron: siguen en el historial. #}
+{% if n_anteriores %}
+<p class="field-hint dash-scope">
+  Se cuentan solo los análisis hechos con el modelo vigente
+  (<code>{{ modelo_vigente }}</code>).
+  {% if n_anteriores == 1 -%}
+  Tu análisis anterior sigue
+  {%- else -%}
+  Tus <span class="num">{{ n_anteriores }}</span> análisis anteriores siguen
+  {%- endif %} en el <a href="/analysis/history">Historial</a>.
+</p>
+{% endif %}
+
+{# ══════════ 1. ACUERDO ══════════════════════════════════════════════
      La sección primaria. Todo lo de acá sale de las opiniones cargadas por
      el médico, y por eso lo primero que se declara es CUÁNTAS son: una tasa
      de acuerdo sin su cobertura describe los casos que alguien se tomó el
-     trabajo de revisar, que no son una muestra al azar de la práctica. -->
+     trabajo de revisar, que no son una muestra al azar de la práctica. #}
 <section class="mx" aria-labelledby="ac-t">
   <div class="mx-head">
     <div>
@@ -136,10 +150,10 @@
     </div>
   </div>
 
-  <!-- ══════════ 2. DÓNDE NO COINCIDEN ══════════
+  {# ══════════ 2. DÓNDE NO COINCIDEN ══════════
        El acuerdo global es un promedio y los promedios esconden. Estas dos
        aperturas contestan la pregunta accionable: en qué tipo de caso el
-       sistema y el médico se separan. -->
+       sistema y el médico se separan. #}
   <div class="mx-grid mx-grid-2">
     {% if c.por_triage %}
     <div class="card mx-card">
@@ -168,10 +182,10 @@
   {% endif %}
 </section>
 
-<!-- ══════════ 3. TU PRÁCTICA ══════════════════════════════════════════
+{# ══════════ 3. TU PRÁCTICA ══════════════════════════════════════════
      Cuánto usaste el sistema y qué te encontró. Describe TU CASUÍSTICA, no
      el rendimiento del modelo: si tu muestra tiene muchas fracturas, el
-     sistema va a marcar mucho, y eso no lo hace mejor ni peor. -->
+     sistema va a marcar mucho, y eso no lo hace mejor ni peor. #}
 <section class="mx" aria-labelledby="pr-t">
   <div class="mx-head">
     <div>
@@ -233,9 +247,9 @@
   </div>
 </section>
 
-<!-- ══════════ 4. EL SISTEMA ═══════════════════════════════════════════
-     Que ande. Tiempos reales medidos sobre tus propias inferencias, y con
-     qué modelo corrieron. -->
+{# ══════════ 4. EL SISTEMA ═══════════════════════════════════════════
+     Que ande. Tiempos reales medidos sobre tus propias inferencias con el
+     modelo vigente. #}
 <section class="mx" aria-labelledby="sy-t">
   <div class="mx-head">
     <div>
@@ -253,28 +267,13 @@
       {{ m.dato(sys.n, '', 'Análisis con tiempo medido') }}
     </div>
 
-    {% if sys.versiones %}
-    <div class="mx-vers">
-      <span class="card-title">Modelo con el que corrieron</span>
-      <ul class="vers-list">
-        {% for v in sys.versiones %}
-        <li><code>{{ v.version }}</code><span class="num">{{ v.n }}</span>
-          {{ 'análisis' if v.n != 1 else 'análisis' }}</li>
-        {% endfor %}
-      </ul>
-      {% if sys.versiones|length > 1 %}
-      <p class="mx-note">Hay análisis de más de un modelo en tu historial: no
-        son comparables entre sí.</p>
-      {% endif %}
-    </div>
-    {% endif %}
   </div>
 </section>
 
-<!-- ══════════ 5. RENDIMIENTO MEDIDO ═══════════════════════════════════
+{# ══════════ 5. RENDIMIENTO MEDIDO ═══════════════════════════════════
      Lo único de esta pantalla medido contra verdad anotada, y por eso lo
      único que se puede llamar sensibilidad. No es tu práctica: son estudios de
-     test que ningún usuario de esta app tocó. -->
+     test que ningún usuario de esta app tocó. #}
 {% if meta %}
 <section class="mx" aria-labelledby="ev-t">
   <div class="mx-head">
@@ -334,13 +333,14 @@
   </div>
   {% endif %}
 
-  {{ m.alcance_metricas(meta, meta.label, titulo='¿De dónde salen estos números?') }}
+  {{ m.alcance_metricas(meta, meta.label, titulo='¿De dónde salen estos números?',
+                        validacion_externa=meta.test_externo is defined and meta.test_externo) }}
 </section>
 {% endif %}
 
-<!-- ══════════ 6. LO QUE CORREGISTE ════════════════════════════════════
+{# ══════════ 6. LO QUE CORREGISTE ════════════════════════════════════
      Material de reentrenamiento, no lectura de guardia. El recuento va en
-     el rótulo: no hay que abrirlo para saber si hay algo adentro. -->
+     el rótulo: no hay que abrirlo para saber si hay algo adentro. #}
 {% if desacuerdos %}
 <details class="quiet dash-fold">
   <summary>

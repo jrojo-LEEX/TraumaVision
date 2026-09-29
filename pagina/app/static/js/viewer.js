@@ -118,7 +118,10 @@
          (analysis_routes.py) y así la lee el filtro de `low` de más abajo.
          Leyendo `b.confidence` el valor era `undefined` y toda caja se
          rotulaba «NaN%» sobre la placa. */
-      var etiqueta = Math.round(b.c * 100) + '%';
+      /* Escala 0–1, sin «%»: la misma que la lista de hallazgos. Con el
+         signo al lado el score se lee como riesgo, y no es una probabilidad
+         de fractura. */
+      var etiqueta = b.c.toFixed(2).replace('.', ',');
       var ancho = 12 + etiqueta.length * 7;
       var pill = document.createElementNS(SVGNS, 'rect');
       pill.setAttribute('x', 0); pill.setAttribute('y', -15);

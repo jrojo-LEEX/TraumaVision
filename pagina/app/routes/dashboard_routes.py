@@ -30,6 +30,7 @@ from config.settings import (
     CONFIDENCE_THRESHOLD,
     LEGAL_DISCLAIMER,
     MODEL_METADATA,
+    MODELO_VIGENTE,
 )
 from config.tiempo import ahora_local, fmt_local
 from src.analytics.stats import (
@@ -63,6 +64,9 @@ def _registros(db: Session, user: User) -> list[dict]:
 
     El conteo de zonas sale de una sola consulta agrupada y no de N consultas
     dentro del bucle.
+
+    Sólo análisis del modelo vigente (y por lo tanto sólo sus opiniones): los
+    de modelos anteriores siguen en el historial, pero no en las métricas.
     """
     analyses = crud.get_analyses_for_stats(db, user_id=user.id)
     ids = [a.id for a in analyses]
@@ -112,11 +116,13 @@ def _datos_usuario(db: Session, user: User) -> tuple[list[dict], list[dict]]:
 
 def _desacuerdos(db: Session, user_id: int, limite: int = 15) -> list[dict]:
     """Los casos donde el médico corrigió al sistema: el material más valioso
-    del dashboard, porque son los candidatos a reanotación y reentrenamiento."""
+    del dashboard, porque son los candidatos a reanotación y reentrenamiento.
+    Sólo los del modelo vigente, como el resto de la pantalla."""
     filas = (
         db.query(Feedback, Analysis)
         .join(Analysis, Feedback.analysis_id == Analysis.id)
-        .filter(Analysis.user_id == user_id, Feedback.agreed.is_(False))
+        .filter(Analysis.user_id == user_id, Feedback.agreed.is_(False),
+                crud.condicion_vigente())
         .order_by(Feedback.created_at.desc())
         .limit(limite)
         .all()
@@ -177,6 +183,11 @@ async def dashboard_page(
             "corte_aviso": ABNORMAL_THRESHOLD,
             "desacuerdos": _desacuerdos(db, user.id),
             "model_metadata": MODEL_METADATA,
+            # Métricas cuenta sólo el modelo vigente; la pantalla dice cuál y
+            # cuántos análisis anteriores quedaron afuera (siguen en el
+            # historial).
+            "modelo_vigente": MODELO_VIGENTE,
+            "n_anteriores": crud.count_analyses_anteriores(db, user_id=user.id),
         },
     )
 
@@ -186,6 +197,7 @@ async def get_stats(
     db: Session = Depends(get_db),
     user: User = Depends(require_user),
 ):
+    """El resumen de Métricas en JSON: sólo análisis del modelo vigente."""
     analyses_data, feedbacks_data = _datos_usuario(db, user)
     return JSONResponse(content=dashboard_summary(analyses_data, feedbacks_data))
 

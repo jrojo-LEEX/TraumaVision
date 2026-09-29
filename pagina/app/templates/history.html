@@ -6,6 +6,9 @@
 {% block content %}
 {% set total = analyses|length %}
 {% set con_hallazgos = analyses|selectattr('is_abnormal')|list|length %}
+{# Todos los análisis se listan; los que no son del modelo vigente llevan la
+   etiqueta «modelo anterior» y quedan fuera de Métricas. #}
+{% set n_vigentes = vigentes|length %}
 {# `total` son las filas que hay EN LA TABLA; `total_registros` los análisis
    que tiene la cuenta. Coinciden salvo que se alcance el tope de la consulta,
    y ahí la pantalla lo dice en vez de llamar "Todos" a una ventana. #}
@@ -30,6 +33,7 @@
     <button type="button" data-f="all" aria-pressed="true">{{ 'Recientes' if recortado else 'Todos' }} <span class="count">{{ total }}</span></button>
     <button type="button" data-f="abn" aria-pressed="false">Con hallazgos <span class="count">{{ con_hallazgos }}</span></button>
     <button type="button" data-f="norm" aria-pressed="false">Sin hallazgos <span class="count">{{ total - con_hallazgos }}</span></button>
+    <button type="button" data-f="vig" aria-pressed="false">Modelo vigente <span class="count">{{ n_vigentes }}</span></button>
   </div>
 </div>
 
@@ -48,9 +52,10 @@
     </thead>
     <tbody>
       {% for a in analyses %}
-      {% set heredado = a.anatomical_region != default_region %}
+      {% set vigente = a.id in vigentes %}
       <tr data-abn="{{ 'true' if a.is_abnormal else 'false' }}"
-          class="{{ 'is-legacy' if heredado else '' }}">
+          data-vig="{{ 'true' if vigente else 'false' }}"
+          class="{{ 'is-legacy' if not vigente else '' }}">
         <td data-v="{{ a.created_at|iso_local }}">
           <div>{{ a.created_at|fecha }}</div>
           {# El número va en su propio elemento porque es lo único que esta
@@ -63,6 +68,9 @@
             <span class="badge badge-finding">Con hallazgos</span>
           {% else %}
             <span class="badge badge-neutral">Sin hallazgos</span>
+          {% endif %}
+          {% if not vigente %}
+            <span class="badge badge-quiet" title="Modelo: {{ a.model_version or 'sin registrar' }}">modelo anterior</span>
           {% endif %}
         </td>
         {# "Confianza máxima 0,0 %" no significa "0 % de chance de fractura":
@@ -139,6 +147,7 @@
     return filas.filter(function (r) {
       if (filtro === 'abn' && r.dataset.abn !== 'true') return false;
       if (filtro === 'norm' && r.dataset.abn !== 'false') return false;
+      if (filtro === 'vig' && r.dataset.vig !== 'true') return false;
       if (texto && r.textContent.toLowerCase().indexOf(texto) === -1) return false;
       return true;
     });

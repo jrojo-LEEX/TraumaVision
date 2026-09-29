@@ -146,6 +146,28 @@ YOLO_MODELS = {
 DEFAULT_REGION = "muneca_pediatrica"
 YOLO_WEIGHTS_PATH = YOLO_MODELS[DEFAULT_REGION]
 
+# ── Modelo vigente ────────────────────────────────────────────────────────────
+# El nombre del modelo vigente sale de la ruta de los pesos, igual que el
+# `model_version` que FractureDetector guarda en cada análisis
+# (modelo/<corrida>/weights/best.pt -> "<corrida>").
+MODELO_VIGENTE = Path(YOLO_WEIGHTS_PATH).parent.parent.name
+
+# Los mismos pesos quedaron guardados con dos nombres: "yolov8m_v1r" es el de
+# la corrida antes de la reorganización del 28-29/09/2026 y "v1r" el de la
+# carpeta actual. Los dos son el modelo vigente.
+_ALIAS_DEL_MODELO = {"v1r": {"yolov8m_v1r"}}
+VERSIONES_VIGENTES = frozenset({MODELO_VIGENTE, *_ALIAS_DEL_MODELO.get(MODELO_VIGENTE, ())})
+
+
+def es_modelo_vigente(model_version) -> bool:
+    """¿El análisis se hizo con el modelo vigente?
+
+    Las métricas y los resúmenes de la página cuentan sólo estos. Los demás
+    (modelos retirados, versiones anteriores del de muñeca, registros sin
+    modelo) se siguen mostrando en el historial, marcados como anteriores.
+    """
+    return model_version in VERSIONES_VIGENTES
+
 # Metadata para la UI de selección.
 #
 # CADA NÚMERO DE ACÁ TIENE UN ARTEFACTO, y tests/test_metadata_vs_artefactos.py
@@ -270,13 +292,19 @@ LEGAL_DISCLAIMER = (
 REGION_NO_INDICADA = object()
 
 
-def domain_disclaimer(region=REGION_NO_INDICADA) -> str:
+def domain_disclaimer(region=REGION_NO_INDICADA, model_version=REGION_NO_INDICADA) -> str:
     """Alcance y limitaciones del modelo que produjo un resultado.
 
     `region` es la clave de la región con la que se corrió la inferencia.
     Si no está en MODEL_METADATA —modelo retirado— o si es None —el registro
     no guardó su procedencia— el texto lo dice y NO cita ninguna métrica: las
     del modelo vivo no son las suyas, y prestárselas sería inventar un número.
+
+    `model_version` es el modelo que guardó el análisis. Si la región es la
+    validada pero el modelo no es el vigente (v1, v2, registros viejos de
+    muñeca), el texto avisa que es un modelo anterior y presenta las
+    métricas como del modelo VIGENTE, no de este resultado. Omitido, el
+    informe es genérico y habla del modelo vigente.
 
     Es la misma regla que aplica la pantalla:
     `out_of_domain = region_key != default_region`, y None nunca es igual.
@@ -295,6 +323,19 @@ def domain_disclaimer(region=REGION_NO_INDICADA) -> str:
     recall = meta["recall"]
     faltan = round((1 - recall) * 100)
     coma = lambda x: ("%.3f" % x).replace(".", ",")  # noqa: E731
+
+    if model_version is not REGION_NO_INDICADA and not es_modelo_vigente(model_version):
+        return (
+            "ALCANCE Y LIMITACIONES: análisis hecho con un modelo anterior "
+            f"({model_version or 'sin registrar'}), que ya no está en uso. "
+            "No se informa prioridad clínica y el resultado no debe usarse para "
+            "ordenar la revisión. Las métricas publicadas del sistema corresponden "
+            f"al modelo vigente ({MODELO_VIGENTE}) y no a este resultado: recall de "
+            f"detección {coma(recall)}, medido el {meta['metrics_date']}. "
+            "UN INFORME SIN HALLAZGOS NO DESCARTA FRACTURA. "
+            "La confianza que muestra el sistema es el score del detector y no debe "
+            "leerse como probabilidad de fractura."
+        )
 
     return (
         "ALCANCE Y LIMITACIONES: el modelo está validado ÚNICAMENTE sobre "

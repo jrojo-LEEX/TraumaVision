@@ -8,12 +8,14 @@
      significa que ninguna caja pasó el umbral de dibujo. Se dice así.
    ====================================================================== #}
 
-{# --- Score crudo del detector. Sin detecciones no es "0 %". --- #}
+{# --- Score crudo del detector. Sin detecciones no es "0 %". ---
+   En la escala 0–1 del resto de la app (visor, lista de hallazgos) y sin
+   el signo de porcentaje: con un «%» al lado se lee como riesgo. #}
 {%- macro conf_display(conf, n_boxes) -%}
   {%- if not conf or conf <= 0 -%}
     sin detecciones
   {%- else -%}
-    {{ ("%.1f"|format(conf * 100))|replace('.', ',') }}&nbsp;%
+    {{ ("%.3f"|format(conf))|replace('.', ',') }}
   {%- endif -%}
 {%- endmacro -%}
 
@@ -107,18 +109,26 @@
    Nada de esto se eliminó del sistema. Se sacó de la lectura permanente,
    donde competía con la placa, y se juntó en un solo lugar donde se puede
    leer entero y señalar en la defensa. #}
-{%- macro alcance_clinico(sens, region_label, abierto=false) -%}
+{# `modelo_vigente`: si se pasa, el resultado NO se hizo con el modelo
+   vigente, y el bloque lo dice: las métricas que cita son de ese modelo y
+   no de este resultado. #}
+{%- macro alcance_clinico(sens, region_label, abierto=false, modelo_vigente=none) -%}
 <details class="scope" {{ 'open' if abierto }}>
   {# El resumen de la derecha dice QUÉ HAY ADENTRO sin obligar a abrir. El
      recall es la salvedad de seguridad más importante del sistema y venía
      estando a un clic de distancia; ahora se ve con el bloque cerrado.
      Derivado de `sens` (MODEL_METADATA), nunca escrito a mano. #}
   <summary>{{ icon('chevron', 'chev') }}{{ icon('info', 'scope-i') }}
-    <span>Alcance clínico y limitaciones</span>
+    <span>{{ 'Alcance del modelo vigente' if modelo_vigente else 'Alcance clínico y limitaciones' }}</span>
     <span class="fold-m">Recall <span class="num">{{ ("%.3f"|format(sens))|replace('.', ',') }}</span></span>
   </summary>
   <div class="scope-body">
     <dl class="scope-list">
+      {% if modelo_vigente %}
+      <dt>De qué modelo son estas métricas</dt>
+      <dd>Del modelo vigente (<code>{{ modelo_vigente }}</code>), <strong>no del que
+          produjo este resultado</strong>. Ese modelo ya no está en uso.</dd>
+      {% endif %}
       <dt>Qué es este resultado</dt>
       <dd>Soporte a la decisión, no un diagnóstico. Confirmar con lectura médica
           y contexto clínico antes de cualquier conducta.</dd>
@@ -194,13 +204,18 @@
    número invitan a leer cuatro cosas. Desde acá se dice de una sola forma:
    el CORTE DE AVISO. El número sale siempre de ABNORMAL_THRESHOLD. #}
 {%- macro corte_nombre() -%}corte de aviso{%- endmacro -%}
-{%- macro corte_pct(umbral) -%}{{ "%.0f"|format(umbral * 100) }}&nbsp;%{%- endmacro -%}
+{%- macro corte_pct(umbral) -%}{{ ("%.2f"|format(umbral))|replace('.', ',') }}{%- endmacro -%}
 
+{# Con `umbral` en none (resultado de un modelo anterior o retirado) no se
+   cita el corte: es el del modelo vigente y no se aplica a ese resultado. #}
 {%- macro find_unit(umbral) -%}
 <p class="find-unit"><strong>Seguridad</strong> del detector en cada zona
   (<span class="num">0</span>–<span class="num">1</span>):
-  <strong>no es una probabilidad de fractura</strong>. La marca en la barra es el
+  <strong>no es una probabilidad de fractura</strong>.
+  {%- if umbral is not none %} La marca en la barra es el
   {{ corte_nombre() }}, <span class="num">{{ ("%.2f"|format(umbral))|replace('.', ',') }}</span>.
+  {%- else %} El {{ corte_nombre() }} del modelo vigente no se aplica a este resultado.
+  {%- endif %}
   <span class="muted">En términos técnicos, el score crudo post-NMS del detector.</span></p>
 {%- endmacro -%}
 
@@ -208,8 +223,12 @@
    El título largo ("PRIORITARIO — Revisión radiológica inmediata") no se
    lee de un vistazo: se lee en dos tiempos. Se parte en la palabra que
    decide el triage y una línea de contexto que la explica. #}
+{# 'NEUTRO' es el de un resultado que no informa prioridad: modelo retirado,
+   región sin registrar o modelo anterior. No dice «Sin hallazgos», porque
+   el modelo que lo produjo pudo haber marcado algo. #}
 {%- macro verdict_word(nivel) -%}
-  {%- if nivel == 'HIGH' -%}Prioritario
+  {%- if nivel == 'NEUTRO' -%}Sin prioridad
+  {%- elif nivel == 'HIGH' -%}Prioritario
   {%- elif nivel == 'MEDIUM' -%}Revisar
   {%- elif nivel == 'LOW_BORDERLINE' -%}Límite
   {%- else -%}Sin hallazgos
@@ -369,16 +388,20 @@
    El orden es NÚMERO · SCORE · BARRA. El dato es el número; la barra es la
    comparación contra el umbral, y una comparación se lee después de lo que
    compara. #}
+{#- `umbral` en none: resultado de un modelo que no es el vigente. La fila
+    no lleva la marca del corte ni se clasifica contra él. -#}
 {%- macro finding_row(i, confidence, umbral) -%}
-<button type="button" class="find {{ 'is-low' if confidence < umbral }}"
+<button type="button" class="find {{ 'is-low' if umbral is not none and confidence < umbral }}"
         data-find="{{ i }}" aria-pressed="false"
         title="Resaltar esta zona sobre la placa · seguridad {{ ("%.3f"|format(confidence))|replace('.', ',') }} (score crudo)"
-        aria-label="Zona marcada {{ i + 1 }}, seguridad {{ ("%.3f"|format(confidence))|replace('.', ',') }}, {{ 'por debajo del' if confidence < umbral else 'sobre el' }} {{ corte_nombre() }} de {{ ("%.2f"|format(umbral))|replace('.', ',') }}. Resaltar sobre la placa.">
+        aria-label="Zona marcada {{ i + 1 }}, seguridad {{ ("%.3f"|format(confidence))|replace('.', ',') }}{% if umbral is not none %}, {{ 'por debajo del' if confidence < umbral else 'sobre el' }} {{ corte_nombre() }} de {{ ("%.2f"|format(umbral))|replace('.', ',') }}{% endif %}. Resaltar sobre la placa.">
   <span class="find-n">{{ "%02d"|format(i + 1) }}</span>
   <span class="find-v">{{ ("%.3f"|format(confidence))|replace('.', ',') }}</span>
   <span class="find-meter" aria-hidden="true">
     <span class="find-fill" style="--w: {{ (confidence * 100)|round|int }}%;"></span>
+    {%- if umbral is not none %}
     <span class="find-cut" style="--u: {{ (umbral * 100)|round|int }}%;"></span>
+    {%- endif %}
   </span>
 </button>
 {%- endmacro -%}
@@ -493,7 +516,10 @@
 {# `titulo` es el rótulo del plegable. El dashboard lo llama en criollo
    —«¿De dónde salen estos números?»—: la superficie pregunta lo que
    pregunta quien mira, y adentro está el dato duro sin recortar. #}
-{%- macro alcance_metricas(meta, region_label, titulo='Alcance clínico y limitaciones') -%}
+{# `validacion_externa`: la pantalla de Métricas muestra el test externo
+   arriba del plegable, así que ahí la validación no es sólo interna. Las
+   demás superficies conservan su texto. #}
+{%- macro alcance_metricas(meta, region_label, titulo='Alcance clínico y limitaciones', validacion_externa=false) -%}
 <details class="scope">
   <summary>{{ icon('chevron', 'chev') }}{{ icon('info', 'scope-i') }}
     <span>{{ titulo }}</span>
@@ -507,8 +533,13 @@
           Medición del {{ meta.metrics_date }}.</dd>
 
       <dt>Validación</dt>
+      {% if validacion_externa %}
+      <dd>Interna (GRAZPEDWRI, separada por paciente) y externa retrospectiva
+          (PediURF, recortes de muñeca). <strong>Sin estudio prospectivo.</strong></dd>
+      {% else %}
       <dd>Interna, separada por paciente. <strong>Sin estudio prospectivo ni
           multicéntrico.</strong></dd>
+      {% endif %}
 
       <dt>Intervalos y nivel de medición</dt>
       <dd>Sensibilidad {{ ("%.3f"|format(meta.sensibilidad))|replace('.', ',') }},

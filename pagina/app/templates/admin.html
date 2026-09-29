@@ -15,15 +15,21 @@
   </div>
 </div>
 
-<!-- ═══ Totales del sistema ═══
+{# ═══ Totales del sistema ═══
      Sin tarjetas: cifras sobre reglas de 1 px, la misma gramática que la
      pantalla de métricas. Ocho cajas idénticas no jerarquizaban nada — el
-     ojo terminaba contando rectángulos en vez de leer los números. -->
+     ojo terminaba contando rectángulos en vez de leer los números. #}
 <section class="metrics-section">
   <div class="metrics-head">
     <span class="eyebrow">Sistema completo</span>
-    <span class="metrics-head-note">cruza datos de todas las cuentas</span>
+    <span class="metrics-head-note">cruza datos de todas las cuentas · solo el modelo vigente (<code>{{ modelo_vigente }}</code>)</span>
   </div>
+  {% if n_anteriores %}
+  <p class="field-hint" style="margin-top:0;">
+    <span class="num">{{ n_anteriores }}</span> {{ 'análisis de modelos anteriores no se cuenta' if n_anteriores == 1 else 'análisis de modelos anteriores no se cuentan' }}
+    en los totales ni en la actividad por usuario. Siguen en las exportaciones CSV.
+  </p>
+  {% endif %}
   <div class="figs">
     <div class="fig">
       <span class="fig-v">{{ global.analisis }}</span>
@@ -46,7 +52,7 @@
   </div>
 </section>
 
-<!-- ═══ Por usuario ═══ -->
+{# ═══ Por usuario ═══ #}
 <section class="metrics-section">
   <div class="metrics-head">
     <span class="eyebrow">Actividad por usuario</span>
@@ -88,7 +94,7 @@
 </p>
 </section>
 
-<!-- ═══ Modelo en producción ═══ -->
+{# ═══ Modelo en producción ═══ #}
 {% set meta = model_metadata.get('muneca_pediatrica') %}
 {% if meta %}
 {# La fecha de medición NO es una cifra: puesta en el mismo hueco tipográfico
