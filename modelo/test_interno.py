@@ -1,18 +1,10 @@
 import json
-import math
 from datetime import date
 from pathlib import Path
 
 from sklearn.metrics import average_precision_score, roc_auc_score
 from ultralytics import YOLO
 
-
-def wilson(aciertos, total):
-    p = aciertos / total
-    z = 1.96
-    centro = (p + z * z / (2 * total)) / (1 + z * z / total)
-    margen = z * math.sqrt(p * (1 - p) / total + z * z / (4 * total * total)) / (1 + z * z / total)
-    return [round(centro - margen, 4), round(centro + margen, 4)]
 
 
 if __name__ == "__main__":
@@ -59,11 +51,8 @@ if __name__ == "__main__":
         "FP": fp,
         "TN": tn,
         "sensibilidad": round(tp / (tp + fn), 4),
-        "sensibilidad_ic95": wilson(tp, tp + fn),
         "especificidad": round(tn / (tn + fp), 4),
-        "especificidad_ic95": wilson(tn, tn + fp),
         "vpp": round(tp / (tp + fp), 4),
-        "vpp_ic95": wilson(tp, tp + fp),
         "auc_roc": round(roc_auc_score(verdad, puntajes), 4),
         "ap": round(average_precision_score(verdad, puntajes), 4),
     }

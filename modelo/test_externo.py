@@ -1,18 +1,10 @@
 import json
-import math
 from datetime import date
 from pathlib import Path
 
 import cv2
 from ultralytics import YOLO
 
-
-def wilson(aciertos, total):
-    p = aciertos / total
-    z = 1.96
-    centro = (p + z * z / (2 * total)) / (1 + z * z / total)
-    margen = z * math.sqrt(p * (1 - p) / total + z * z / (4 * total * total)) / (1 + z * z / total)
-    return [round(centro - margen, 4), round(centro + margen, 4)]
 
 
 def contar(resultados):
@@ -26,9 +18,7 @@ def contar(resultados):
         "FP": fp,
         "TN": tn,
         "sensibilidad": round(tp / (tp + fn), 4),
-        "sensibilidad_ic95": wilson(tp, tp + fn),
         "especificidad": round(tn / (tn + fp), 4),
-        "especificidad_ic95": wilson(tn, tn + fp),
     }
 
 

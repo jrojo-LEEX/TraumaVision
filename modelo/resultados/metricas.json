@@ -1,6 +1,6 @@
 {
   "pesos": "modelo/v1r/weights/best.pt",
-  "fecha": "2026-09-29",
+  "fecha": "2026-09-30",
   "umbral": 0.22,
   "n_imagenes": 3038,
   "n_instancias": 2722,
@@ -15,20 +15,8 @@
   "FP": 70,
   "TN": 942,
   "sensibilidad": 0.9674,
-  "sensibilidad_ic95": [
-    0.9588,
-    0.9743
-  ],
   "especificidad": 0.9308,
-  "especificidad_ic95": [
-    0.9135,
-    0.9449
-  ],
   "vpp": 0.9655,
-  "vpp_ic95": [
-    0.9567,
-    0.9726
-  ],
   "auc_roc": 0.9868,
   "ap": 0.9932
 }
