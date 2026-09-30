@@ -1,16 +1,6 @@
-{# ======================================================================
-   Macros compartidas — reglas de presentación clínica.
+{# Macros compartidas de presentación #}
 
-   Acá viven las reglas que NO se pueden romper en ninguna pantalla:
-   · El score del detector NO es una probabilidad de fractura. Se muestra
-     como «seguridad» del detector, en escala 0–1, y se dice al lado.
-   · "Confianza máxima 0,0 %" no significa "0 % de chance de fractura":
-     significa que ninguna caja pasó el umbral de dibujo. Se dice así.
-   ====================================================================== #}
-
-{# --- Score crudo del detector. Sin detecciones no es "0 %". ---
-   En la escala 0–1 del resto de la app (visor, lista de hallazgos) y sin
-   el signo de porcentaje: con un «%» al lado se lee como riesgo. #}
+{# Score crudo del detector #}
 {%- macro conf_display(conf, n_boxes) -%}
   {%- if not conf or conf <= 0 -%}
     sin detecciones
@@ -18,13 +8,6 @@
     {{ ("%.3f"|format(conf))|replace('.', ',') }}
   {%- endif -%}
 {%- endmacro -%}
-
-{# Acá vivía `verdict_title`, la frase larga del veredicto («Prioritario ·
-   revisión radiológica inmediata»). No la llamaba ninguna plantilla: la
-   reemplazó `verdict_word` —UNA palabra en un cartel de 40 px— cuando la
-   lectura pasó a ser una pantalla de triage. Se borra, no se comenta: una
-   macro muerta que se ve viva es lo que hace que la próxima pantalla se
-   estile contra el componente equivocado. #}
 
 {%- macro verdict_class(nivel) -%}
   {%- if nivel == 'HIGH' -%}urgency-high
@@ -34,8 +17,6 @@
   {%- endif -%}
 {%- endmacro -%}
 
-{# --- Iconos SVG. Reemplazan los emojis: renderizaban distinto por sistema
-       operativo y no tenían texto alternativo. --- #}
 {%- macro icon(name, cls='') -%}
 {%- if name == 'alert' -%}
 <svg class="{{ cls }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
@@ -64,60 +45,14 @@
 {%- endif -%}
 {%- endmacro -%}
 
-{# Acá vivía `verdict_icon`, que elegía el ícono del bloque `.verdict`. Sin
-   llamadores desde que el veredicto es una palabra y no una tarjeta con
-   ícono; su CSS (`.verdict-icon`) se retiró en el mismo pase. #}
-
-{# ======================================================================
-   COMPONENTES DE LECTURA RÁPIDA
-   ----------------------------------------------------------------------
-   Un médico de guardia decide triage en segundos. Todo lo que acá era un
-   párrafo al lado de un número ahora ES el número: la urgencia se ve como
-   una palabra, y la confianza de cada hallazgo se ve como barra contra el
-   corte de aviso.
-
-   La honestidad clínica NO se borró: dejó de ser prosa permanente y pasó
-   al bloque `alcance_clinico`, que la contiene entera detrás de un afordance.
-   ====================================================================== #}
-
-{# --- Filete de urgencia ----------------------------------------------
-   Macizo, 44x4, encima de la palabra. Es el de la maqueta.
-
-   Acá hubo una ESCALERA de cuatro peldaños encendidos hasta el nivel, para
-   mostrar la POSICIÓN en la escala y no un color suelto. Se probó y se
-   retira, por cinco razones medidas:
-     · los cuatro niveles ya están completos y sin ambigüedad en la PALABRA,
-       en un cartel de 40 px y peso 800. La escalera no agregaba un dato:
-       repetía uno que ya estaba dicho mejor;
-     · no se leía sin leyenda, y la leyenda no estaba. Entre «prioritario» y
-       «revisar» había 11 px sobre un objeto de 44, y los peldaños apagados
-       —que son los que constituyen la escala— medían 1,24:1 contra la hoja:
-       invisibles. Sin el marco visible no se transmite «3 de 4», se
-       transmite «largo variable»;
-     · en el visor NUNCA hay dos estudios a la vez: una escala comparativa
-       no tiene contra qué leerse;
-     · a 375 se leía literalmente como un guión:  - - - -  REVISAR;
-     · chocaba con el medidor 60 px más abajo — otra barra horizontal, mismo
-       color de estado, otra escala.
-   El filete macizo no codifica nada por su tamaño: repite el color de la
-   palabra que tiene debajo, y ésa es toda su función. #}
+{# Filete de urgencia #}
 {%- macro urgency_rule(nivel, neutro=false) -%}
 <span class="u-rule {{ 'is-neutral' if neutro else verdict_class(nivel) }}" aria-hidden="true"></span>
 {%- endmacro -%}
 
-{# --- Alcance clínico: TODA la honestidad, detrás de un afordance ------
-   Nada de esto se eliminó del sistema. Se sacó de la lectura permanente,
-   donde competía con la placa, y se juntó en un solo lugar donde se puede
-   leer entero y señalar en la defensa. #}
-{# `modelo_vigente`: si se pasa, el resultado NO se hizo con el modelo
-   vigente, y el bloque lo dice: las métricas que cita son de ese modelo y
-   no de este resultado. #}
+{# Alcance clínico y limitaciones #}
 {%- macro alcance_clinico(sens, region_label, abierto=false, modelo_vigente=none) -%}
 <details class="scope" {{ 'open' if abierto }}>
-  {# El resumen de la derecha dice QUÉ HAY ADENTRO sin obligar a abrir. El
-     recall es la salvedad de seguridad más importante del sistema y venía
-     estando a un clic de distancia; ahora se ve con el bloque cerrado.
-     Derivado de `sens` (MODEL_METADATA), nunca escrito a mano. #}
   <summary>{{ icon('chevron', 'chev') }}{{ icon('info', 'scope-i') }}
     <span>{{ 'Alcance del modelo vigente' if modelo_vigente else 'Alcance clínico y limitaciones' }}</span>
     <span class="fold-m">Recall <span class="num">{{ ("%.3f"|format(sens))|replace('.', ',') }}</span></span>
@@ -133,11 +68,6 @@
       <dd>Soporte a la decisión, no un diagnóstico. Confirmar con lectura médica
           y contexto clínico antes de cualquier conducta.</dd>
 
-      {# El «13» estaba escrito a mano, al lado del recall que sí se calcula.
-         Si cambiaba el recall, el visor seguía diciendo 13 y el dashboard
-         —que lo deriva— decía otra cosa: dos pantallas del mismo sistema
-         afirmando cosas distintas sobre lo que se le escapa al modelo. Se
-         deriva igual que en `alcance_metricas`. #}
       <dt>Qué se le escapa</dt>
       <dd>Recall de detección {{ ("%.3f"|format(sens))|replace('.', ',') }}:
           alrededor de {{ ((1 - sens) * 100)|round|int }} de cada 100 fracturas
@@ -159,15 +89,7 @@
 </details>
 {%- endmacro -%}
 
-{# --- LA SALVEDAD CLÍNICA, EN UN SOLO LUGAR ---------------------------
-   La dicen DOS superficies: el bloque `scope_line` del panel de lectura, y
-   la franja fija del visor en el teléfono (`verdict_strip`), porque abajo
-   de 860 el panel entero cae bajo el pliegue y la salvedad tiene que estar
-   en el cuadro cero igual que el veredicto.
-
-   Va acá y no escrita dos veces: si una de las dos se ablanda, el sistema afirma dos cosas
-   distintas sobre lo mismo, y ésta es la frase que decide si el médico
-   actúa o consulta. Un solo texto, dos superficies. #}
+{# Salvedad clínica #}
 {%- macro salvedad_texto(is_abnormal) -%}
   {%- if is_abnormal -%}
     Resultado automatizado. <strong>Confirmar con lectura médica</strong> antes de cualquier conducta.
@@ -176,15 +98,9 @@
   {%- endif -%}
 {%- endmacro -%}
 
-{# La otra mitad del cuadro cero: qué NO es el 0–1 de la lista de
-   hallazgos. El score de cada caja se lee fácil como un porcentaje de
-   riesgo, y no lo es. #}
 {%- macro score_no_es_prob() -%}El score de cada hallazgo <strong>no es una probabilidad de fractura</strong>.{%- endmacro -%}
 
-{# --- La línea de alcance permanente ----------------------------------
-   Una sola. Antes esta misma frase aparecía en el detalle del veredicto Y
-   en una tarjeta de advertencia aparte, con el mismo peso, en la misma
-   vista. Repetida, se deja de leer. #}
+{# Línea de alcance #}
 {%- macro scope_line(is_abnormal) -%}
 <p class="scope-line">
   {{ icon('alert') }}
@@ -192,22 +108,10 @@
 </p>
 {%- endmacro -%}
 
-{# --- El rótulo de la lista de hallazgos ------------------------------
-   Estaba copiado carácter por carácter en results.html y en
-   study_results.html. Una sola definición, dos usos — igual que la barra
-   del visor. El umbral es el que dibuja la marca en cada barra y sale de
-   ABNORMAL_THRESHOLD: acá no hay ningún número escrito a mano. #}
-{# --- LA FRASE ÚNICA DEL UMBRAL DE ANORMALIDAD ------------------------
-   El mismo valor se nombraba de cuatro maneras distintas en pantallas que
-   se leen juntas: «sobre el umbral», «sobre el umbral de anormalidad»,
-   «Sobre el umbral» y «umbral de N». Cuatro redacciones para un solo
-   número invitan a leer cuatro cosas. Desde acá se dice de una sola forma:
-   el CORTE DE AVISO. El número sale siempre de ABNORMAL_THRESHOLD. #}
+{# Umbral de anormalidad y rótulo de hallazgos #}
 {%- macro corte_nombre() -%}corte de aviso{%- endmacro -%}
 {%- macro corte_pct(umbral) -%}{{ ("%.2f"|format(umbral))|replace('.', ',') }}{%- endmacro -%}
 
-{# Con `umbral` en none (resultado de un modelo anterior o retirado) no se
-   cita el corte: es el del modelo vigente y no se aplica a ese resultado. #}
 {%- macro find_unit(umbral) -%}
 <p class="find-unit"><strong>Seguridad</strong> del detector en cada zona
   (<span class="num">0</span>–<span class="num">1</span>):
@@ -219,13 +123,7 @@
   <span class="muted">En términos técnicos, el score crudo post-NMS del detector.</span></p>
 {%- endmacro -%}
 
-{# --- Veredicto en UNA palabra ----------------------------------------
-   El título largo ("PRIORITARIO — Revisión radiológica inmediata") no se
-   lee de un vistazo: se lee en dos tiempos. Se parte en la palabra que
-   decide el triage y una línea de contexto que la explica. #}
-{# 'NEUTRO' es el de un resultado que no informa prioridad: modelo retirado,
-   región sin registrar o modelo anterior. No dice «Sin hallazgos», porque
-   el modelo que lo produjo pudo haber marcado algo. #}
+{# Veredicto #}
 {%- macro verdict_word(nivel) -%}
   {%- if nivel == 'NEUTRO' -%}Sin prioridad
   {%- elif nivel == 'HIGH' -%}Prioritario
@@ -243,40 +141,7 @@
   {%- endif -%}
 {%- endmacro -%}
 
-{# --- Franja de veredicto del visor -----------------------------------
-   Debajo del breakpoint angosto no hay panel lateral, y la lectura de
-   triage deja de ser lo primero: pasa a ser un bloque DESPUÉS de la placa,
-   que mide toda la altura. En 1024x768 —la resolución de un proyector de
-   aula— eso dejaba la palabra del veredicto en y=700 sobre 768: el médico
-   no la veía sin scrollear.
-
-   La franja la devuelve al cuadro cero. Va fija al tope del panel de
-   imagen, como chrome del visor y NUNCA sobre la anatomía (misma doctrina
-   que el sobreimpreso de las esquinas), con las tres cosas que deciden el
-   triage comprimidas en una línea: la posición en la escala de urgencia,
-   y la palabra.
-
-   Es un afordance VISUAL, no contenido nuevo: repite el titular del panel
-   para quien mira una pantalla y tiene un pliegue. Por eso va
-   `aria-hidden`: el lector de pantalla no tiene pliegue, y el veredicto
-   completo —palabra, contexto y alcance— ya está en el panel, que
-   queda intacto. Así nada se anuncia dos veces.
-
-   SEGUNDO RENGLÓN: LA SALVEDAD. Medido a 375x667 con el estudio 601, la
-   franja resolvía el veredicto y las otras piezas obligatorias del cuadro cero caían muy abajo: `.scope-line`
-   en y=990 y `.find-unit` en y=1101, sobre un pliegue de 667. O sea que un
-   médico con el teléfono en la mano podía leer el número y decidir SIN
-   HABER VISTO NUNCA «confirmar con lectura médica» ni «no es una
-   probabilidad de fractura».
-
-   El renglón cuesta ~34 px de placa en el teléfono. Es el intercambio
-   correcto y no está en discusión: la regla del cuadro cero es que el
-   veredicto y las dos salvedades están juntos.
-
-   Las dos frases no se escriben acá: salen de `salvedad_texto` y
-   `score_no_es_prob`, los mismos macros que usan el panel y la lista de
-   hallazgos. La franja no puede decir una versión más blanda de la
-   salvedad que el bloque que repite. #}
+{# Franja de veredicto del visor #}
 {%- macro verdict_strip(nivel, neutro=false, idx=none, oculto=false, is_abnormal=none) -%}
 <div class="verdict-strip {{ verdict_class(nivel) }}"
      aria-hidden="true"
@@ -295,13 +160,7 @@
 </div>
 {%- endmacro -%}
 
-{# --- Barra del visor --------------------------------------------------
-   Estaba copiada carácter por carácter en results.html y en
-   study_results.html. Una sola definición, dos usos.
-
-   Los controles de imagen (brillo y contraste) son de la placa, no de la
-   interfaz: una radiografía se mira moviendo la ventana, y hasta ahora no
-   se podía. `data-tools` los agrupa para que viewer.js los encuentre. #}
+{# Barra del visor #}
 {%- macro viewer_toolbar() -%}
 <div class="toolbar">
   <button type="button" class="tool" data-act="out" title="Alejar (tecla -)" aria-label="Alejar">
@@ -362,34 +221,7 @@
 </div>
 {%- endmacro -%}
 
-{# --- Fila de hallazgo -------------------------------------------------
-   Es un <button> de verdad, no un div: así el Tab lo alcanza y Enter lo
-   activa sin que haya que inventar teclado. Hover y foco encienden la caja
-   correspondiente sobre la placa; el vínculo lo cablea viewer.js.
-
-   El valor va en escala 0–1 y SIN el signo de porcentaje. No es una
-   preferencia tipográfica: con un «%» al lado el número se lee como riesgo,
-   y es el score post-NMS del detector; llamarlo "probabilidad de fractura"
-   es exactamente lo que el trabajo no afirma. El historial ya lo resolvía así con su
-   columna propia; acá se usa el mismo rótulo llano —«seguridad»— y el
-   nombre técnico queda en el `title` y en `find_unit`. #}
-{# La columna «Estado» murió. Repetía en versalitas, una vez por fila y
-   partida en dos renglones, lo que la barra ya dice sola. En su lugar la
-   barra lleva LA MARCA DEL CORTE: estar a la derecha de la marca ES estar
-   sobre el corte de aviso.
-
-   La marca sale de `umbral` —que es ABNORMAL_THRESHOLD, el mismo valor con
-   el que el backend decide `is_abnormal`— y no de un porcentaje escrito a
-   mano. Si mañana el umbral cambia, la marca se mueve sola.
-
-   Lo que la marca dice a la vista, el `aria-label` lo dice con palabras:
-   un lector de pantalla no ve la posición relativa de dos objetos.
-
-   El orden es NÚMERO · SCORE · BARRA. El dato es el número; la barra es la
-   comparación contra el umbral, y una comparación se lee después de lo que
-   compara. #}
-{#- `umbral` en none: resultado de un modelo que no es el vigente. La fila
-    no lleva la marca del corte ni se clasifica contra él. -#}
+{# Fila de hallazgo #}
 {%- macro finding_row(i, confidence, umbral) -%}
 <button type="button" class="find {{ 'is-neutral' if umbral is none else ('is-low' if confidence < umbral) }}"
         data-find="{{ i }}" aria-pressed="false"
@@ -406,29 +238,7 @@
 </button>
 {%- endmacro -%}
 
-
-{# ======================================================================
-   COMPONENTES DE MÉTRICAS
-   ----------------------------------------------------------------------
-   Misma gramática que el panel de lectura: lo que era un párrafo al lado
-   de un número pasa a SER el número. Acá se convierten tres cosas que en
-   el dashboard eran prosa:
-
-     · el IC 95 % ("IC 95 %: 0,937 a 0,958")  -> un segmento dibujado;
-     · el recall ("N de cada 100 no se detectan") -> 100 celdas, N marcadas,
-       con N derivado de MODEL_METADATA['recall'];
-
-   Nada de esto reemplaza el texto: el texto entero vive en
-   `alcance_metricas`, el mismo plegable ámbar del visor.
-   ====================================================================== #}
-
-{# --- Fila del gráfico de puntos con bigotes --------------------------
-   Escala truncada a [piso, 1]. Es legítimo en un gráfico de PUNTOS —la
-   posición codifica el valor, no una longitud desde cero— y sin truncar,
-   un IC de dos puntos porcentuales no se ve. El eje se rotula siempre.
-
-   `ic` es la tupla del intervalo medido. Donde el sistema no publica un
-   intervalo NO se dibuja ninguno: el punto va solo. No se inventa. #}
+{# Métricas: fila del gráfico de puntos #}
 {%- macro metric_row(rotulo, v, ic=none, nota='', piso=0.80) -%}
 {%- set pos = ((v - piso) / (1 - piso) * 100) if v > piso else 0 -%}
 <div class="mrow">
@@ -436,13 +246,6 @@
   <span class="mrow-track" role="img"
         aria-label="{{ rotulo }}: {{ ("%.3f"|format(v))|replace('.', ',') }}{% if ic %}, intervalo de confianza del 95 por ciento de {{ ("%.3f"|format(ic[0]))|replace('.', ',') }} a {{ ("%.3f"|format(ic[1]))|replace('.', ',') }}{% endif %}. Escala de {{ (piso * 100)|round|int }} a 100 por ciento.">
     {%- if ic -%}
-    {#- Los dos extremos se recortan al MISMO borde, y es el izquierdo: la
-        condición pregunta si el valor está por encima del PISO, así que
-        cuando es falsa el valor cayó fuera de escala por la izquierda,
-        igual que `pos`. El `hi` se recortaba a 100 —el borde opuesto—, así
-        que un intervalo entero por debajo del piso se dibujaba cruzando el
-        eje completo con el punto clavado en el cero: el gráfico afirmaba
-        que el límite superior llegaba al 100 %. -#}
     {%- set lo = ((ic[0] - piso) / (1 - piso) * 100) if ic[0] > piso else 0 -%}
     {%- set hi = ((ic[1] - piso) / (1 - piso) * 100) if ic[1] > piso else 0 -%}
     <span class="mrow-ic" style="--lo: {{ "%.2f"|format(lo) }}%; --hi: {{ "%.2f"|format(hi) }}%;"></span>
@@ -453,7 +256,6 @@
 </div>
 {%- endmacro -%}
 
-{# El eje, una sola vez para todas las filas. #}
 {%- macro metric_axis(piso=0.80) -%}
 <div class="maxis">
   <span class="maxis-ticks" aria-hidden="true">
@@ -464,20 +266,12 @@
 </div>
 {%- endmacro -%}
 
-{# --- Lo que se le escapa, en objetos contables -----------------------
-   El recall es la salvedad de seguridad más importante del sistema. Como
-   decimal se lee como "casi 90, bien". Como casillas encendidas sobre 100
-   (tantas como fracturas se le escapan, derivadas de MODEL_METADATA) se lee
-   como lo que es. La frase se conserva igual: la grilla
-   no la reemplaza, la hace evidente antes de leerla. #}
+{# Cuadrícula de fracturas no detectadas #}
 {%- macro waffle_misses(recall) -%}
 {%- set faltan = ((1 - recall) * 100)|round|int -%}
 <figure class="waffle">
   <div class="waffle-grid" role="img"
        aria-label="De cada 100 fracturas anotadas, alrededor de {{ faltan }} no se detectan.">
-    {#- El índice de cada casilla marcada viaja en el HTML, no en JS: la
-        hoja lo usa para escalonar la marca de a una (§38.h) y así el
-        conteo se ve sin agregarle una línea de script al dashboard. -#}
     {%- for i in range(100) -%}
     {%- if i < faltan -%}<span class="wcell is-miss" style="--i: {{ i }};"></span>
     {%- else -%}<span class="wcell"></span>{%- endif -%}
@@ -491,9 +285,7 @@
 </figure>
 {%- endmacro -%}
 
-{# --- Proporción en una barra -----------------------------------------
-   Misma pieza que el recuento del estudio (`.tally-bar`). Un porcentaje
-   escrito obliga a imaginar la parte; la barra ya la muestra. #}
+{# Proporción en una barra #}
 {%- macro prop_bar(parte, total, rotulo, tono='') -%}
 <div class="prop {{ tono }}">
   <div class="prop-head">
@@ -506,18 +298,7 @@
 </div>
 {%- endmacro -%}
 
-{# --- Alcance clínico de las MÉTRICAS ---------------------------------
-   Hermano de `alcance_clinico`: mismo plegable ámbar, mismo lugar en la
-   jerarquía, contenido propio. Acá aterriza todo lo que en el dashboard
-   era prosa permanente al lado de un número: el método de medición, los
-   intervalos exactos, el nivel al que está medida cada métrica y la
-   ausencia de estudio prospectivo. Nada se borró: cambió de lugar. #}
-{# `titulo` es el rótulo del plegable. El dashboard lo llama en criollo
-   —«¿De dónde salen estos números?»—: la superficie pregunta lo que
-   pregunta quien mira, y adentro está el dato duro sin recortar. #}
-{# `validacion_externa`: la pantalla de Métricas muestra el test externo
-   arriba del plegable, así que ahí la validación no es sólo interna. Las
-   demás superficies conservan su texto. #}
+{# Alcance de las métricas #}
 {%- macro alcance_metricas(meta, region_label, titulo='Alcance clínico y limitaciones', validacion_externa=false) -%}
 <details class="scope">
   <summary>{{ icon('chevron', 'chev') }}{{ icon('info', 'scope-i') }}
@@ -557,21 +338,7 @@
 </details>
 {%- endmacro -%}
 
-{# ======================================================================
-   MÉTRICAS DE PRÁCTICA — componentes (31/08/2026)
-   ----------------------------------------------------------------------
-   Todos comen el mismo diccionario que produce `_tasa` en stats.py:
-   {parte, total, tasa, suficiente}. Que sea uno solo no es comodidad: es
-   lo que garantiza que NINGUNA proporción de esta pantalla se pueda
-   dibujar sin su denominador al lado, ni pasar por alto el corte de
-   muestra mínima. Si un día aparece un porcentaje que no salió de acá,
-   salió sin esas dos protecciones.
-   ====================================================================== #}
-
-{# Una proporción, en el tamaño de un dato principal.
-   Por debajo de la muestra mínima NO se publica el porcentaje: se publica
-   el recuento crudo, que es lo único que se sabe. «100 %» sobre una sola
-   opinión no es un resultado. #}
+{# Métricas de práctica #}
 {%- macro tasa_grande(t, rotulo, nota='') -%}
 <div class="kpi{{ ' is-thin' if not t.suficiente }}">
   <span class="kpi-cap">{{ rotulo }}</span>
@@ -589,14 +356,6 @@
 </div>
 {%- endmacro -%}
 
-{# EL CUADRANTE. La pieza central de la pantalla.
-
-   Se lee como se lee frente a la placa: arriba lo que el sistema marcó,
-   abajo lo que dejó limpio; a la izquierda donde coincidieron y a la
-   derecha donde no. De las cuatro celdas hay UNA que describe el modo de
-   falla caro —el sistema no marcó nada y el médico dijo que sí había algo—
-   y por eso es la única que lleva color y nombre completo. Las otras tres
-   son recuentos. #}
 {%- macro cuadrante(c) -%}
 {%- set q = c.cuadrante -%}
 <div class="cuad" role="table" aria-label="Acuerdo entre el sistema y tu lectura, según lo que el sistema marcó.">
@@ -620,11 +379,6 @@
 </div>
 {%- endmacro -%}
 
-{# Una fila de segmento: rótulo, barra de acuerdo y recuento.
-   La barra es un objeto gráfico y arranca en cero, así que su LARGO es la
-   proporción y no hay escala truncada que explicar. Cuando la muestra no
-   alcanza, la barra se dibuja igual pero apagada y el número se muestra
-   como recuento: se ve que hay poco, que es el dato honesto. #}
 {%- macro segmento(item) -%}
 <div class="sg-row{{ ' is-thin' if not item.suficiente }}">
   <span class="sg-k">{{ item.etiqueta }}</span>
@@ -643,14 +397,6 @@
 </div>
 {%- endmacro -%}
 
-{# Las dos que siguen son para el PANEL DE ADMINISTRACIÓN, que tiene otra
-   gramática (cifras sobre reglas de 1 px, tabla por usuario) pero las MISMAS
-   dos protecciones: comen sólo el dict de `_tasa`, muestran el denominador y
-   por debajo de la muestra mínima publican el recuento, nunca el porcentaje.
-   El panel las calculaba por su cuenta y decía «100 %» sobre una opinión. #}
-
-{# Una proporción en el hueco de una cifra `.fig`. La cifra grande es la
-   tasa cuando la muestra alcanza y el recuento cuando no. #}
 {%- macro tasa_fig(t, rotulo, nota='') -%}
 <div class="fig">
   {%- if t.total == 0 %}
@@ -668,8 +414,6 @@
 </div>
 {%- endmacro -%}
 
-{# Una proporción en una celda de tabla. Sin datos: guión. Muestra chica:
-   recuento apagado, con la razón en el título. #}
 {%- macro tasa_celda(t) -%}
 {%- if t.total == 0 -%}
 <span class="muted">—</span>
@@ -680,8 +424,6 @@
 {%- endif -%}
 {%- endmacro -%}
 
-{# Un dato duro con su unidad. Para lo que no es una proporción: tiempos,
-   recuentos, promedios. #}
 {%- macro dato(valor, unidad, rotulo, nota='') -%}
 <div class="kpi is-plain">
   <span class="kpi-cap">{{ rotulo }}</span>
@@ -690,8 +432,6 @@
 </div>
 {%- endmacro -%}
 
-{# Milisegundos a segundos con una decimal, o un guión si no hay medición.
-   Un médico no lee 4148 ms; lee «4,1 s». #}
 {%- macro segundos(ms) -%}
 {%- if ms is none -%}—{%- else -%}{{ ("%.1f"|format(ms / 1000))|replace('.', ',') }}<span class="kpi-unit">&nbsp;s</span>{%- endif -%}
 {%- endmacro -%}

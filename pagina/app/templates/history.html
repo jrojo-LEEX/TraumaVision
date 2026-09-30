@@ -6,12 +6,7 @@
 {% block content %}
 {% set total = analyses|length %}
 {% set con_hallazgos = analyses|selectattr('is_abnormal')|list|length %}
-{# Todos los análisis se listan; los que no son del modelo vigente llevan la
-   etiqueta «modelo anterior» y quedan fuera de Métricas. #}
 {% set n_vigentes = vigentes|length %}
-{# `total` son las filas que hay EN LA TABLA; `total_registros` los análisis
-   que tiene la cuenta. Coinciden salvo que se alcance el tope de la consulta,
-   y ahí la pantalla lo dice en vez de llamar "Todos" a una ventana. #}
 {% set recortado = total < total_registros %}
 
 <div class="page-header">
@@ -58,9 +53,6 @@
           class="{{ 'is-legacy' if not vigente else '' }}">
         <td data-v="{{ a.created_at|iso_local }}">
           <div>{{ a.created_at|fecha }}</div>
-          {# El número va en su propio elemento porque es lo único que esta
-             fila y el visor comparten: al abrir el análisis vuela de acá al
-             encabezado del panel y contesta "de dónde vino esta vista". #}
           <div class="td-id">{{ a.created_at|hora }} · <span class="td-nid" data-nid>#{{ a.id }}</span></div>
         </td>
         <td>
@@ -73,8 +65,6 @@
             <span class="badge badge-quiet" title="Modelo: {{ a.model_version or 'sin registrar' }}">modelo anterior</span>
           {% endif %}
         </td>
-        {# "Confianza máxima 0,0 %" no significa "0 % de chance de fractura":
-           significa que ninguna caja pasó el umbral de dibujo. #}
         <td class="num" data-v="{{ a.max_detection_confidence or 0 }}">
           {{ m.conf_display(a.max_detection_confidence, a.findings_above_abnormal) }}
         </td>
@@ -124,8 +114,7 @@
 
 {% block scripts %}
 <script>
-/* Búsqueda, filtro, orden y paginado sobre la tabla ya renderizada.
-   Antes eran 58 filas sin ninguna de las cuatro cosas. */
+/* Búsqueda, filtro, orden y paginado de la tabla */
 (function () {
   var tabla = document.getElementById('tabla');
   if (!tabla) return;
@@ -158,25 +147,8 @@
     return c.dataset.v !== undefined ? c.dataset.v : c.textContent.trim();
   }
 
-  /* LA CONTINUIDAD ESPACIAL DE LA TABLA.
-     `render()` reescribe el cuerpo con `appendChild`: las filas
-     TELETRANSPORTAN a su lugar nuevo. El médico que acaba de ordenar por
-     score no tiene forma de seguir dónde quedó la fila que estaba mirando, y
-     ése es justamente el momento en que le importa.
-
-     Flip (motion.js §H) mide dónde estaba cada fila ANTES del cambio y dónde
-     quedó DESPUÉS, y anima la diferencia. La información no cambia: cambia
-     el lugar donde está, que es exactamente lo que el movimiento tiene que
-     decir. Lo que se mueve es la POSICIÓN de la fila; las barras de score
-     que lleva adentro conservan su ancho exacto durante todo el recorrido.
-
-     Si no hay capa de movimiento, `medir()` no existe y `render()` hace lo
-     que hacía siempre. */
   var primerPintado = true;
   function render() {
-    /* El primer `render()` no se anima: la tabla no viene DE ningún lado, es
-       la primera vez que se dibuja. Ahí el movimiento que corresponde es el
-       encendido de la página (motion.js §40), que la trata como un bloque. */
     var flip = (!primerPintado && window.TVFlipTabla)
       ? window.TVFlipTabla.medir() : null;
     var vis = visibles();
@@ -239,16 +211,7 @@
   render();
 })();
 
-/* Continuidad espacial historial → visor.
-   La barra y el pie ya quedaban clavados entre páginas (view transitions,
-   §32.d), pero el contenido se cruzaba entero: nada decía CUÁL de las
-   cincuenta filas se abrió. Marcando el número del análisis justo antes de
-   navegar, el navegador lo trata como el MISMO elemento en las dos páginas
-   y lo lleva de la celda al encabezado del panel de lectura.
-
-   El nombre se pone en el click y no en el HTML porque tiene que ser único
-   en el documento: si las cincuenta filas lo llevaran puesto, el navegador
-   descartaría la transición entera. */
+/* Transición de vista del historial al visor */
 (function () {
   var tabla = document.getElementById('tabla');
   if (!tabla) return;
@@ -273,9 +236,6 @@
     marcado = nid;
   });
 
-  /* Si el médico vuelve con el botón atrás, la página puede salir del
-     cache con la marca puesta: dos elementos con el mismo nombre matan la
-     próxima transición. */
   window.addEventListener('pageshow', limpiar);
 })();
 </script>

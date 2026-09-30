@@ -1,51 +1,43 @@
 """
 security.py — Hash y verificación de contraseñas.
 
-Usa PBKDF2-HMAC-SHA256 de la biblioteca estándar, con salt por usuario y
-comparación en tiempo constante. No requiere dependencias externas.
-
-Para un despliegue real conviene migrar a Argon2id (`argon2-cffi`); PBKDF2 es
-suficiente y auditable para un prototipo de tesis.
+PBKDF2-HMAC-SHA256 de la biblioteca estándar, con salt por usuario.
 """
 
 import hashlib
 import hmac
 import secrets
 
-_ALGORITHM = "pbkdf2_sha256"
-_ITERATIONS = 240_000
-_SALT_BYTES = 16
+_ALGORITMO = "pbkdf2_sha256"
+_ITERACIONES = 240_000
+_BYTES_DE_SALT = 16
 
 
-def hash_password(password: str, *, iterations: int = _ITERATIONS) -> str:
+def _pbkdf2(password: str, salt: bytes, iteraciones: int) -> bytes:
+    return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iteraciones)
+
+
+def hash_password(password: str) -> str:
     """Devuelve 'pbkdf2_sha256$<iteraciones>$<salt_hex>$<hash_hex>'."""
     if not password:
         raise ValueError("La contraseña no puede estar vacía.")
-    salt = secrets.token_bytes(_SALT_BYTES)
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
-    return f"{_ALGORITHM}${iterations}${salt.hex()}${digest.hex()}"
+    salt = secrets.token_bytes(_BYTES_DE_SALT)
+    digest = _pbkdf2(password, salt, _ITERACIONES)
+    return f"{_ALGORITMO}${_ITERACIONES}${salt.hex()}${digest.hex()}"
 
 
 def verify_password(password: str, stored: str) -> bool:
-    """Verifica una contraseña contra su hash almacenado.
-
-    Devuelve False ante cualquier formato inválido, en vez de levantar: así un
-    usuario sin contraseña seteada nunca puede autenticarse por accidente.
-    """
+    """True si la contraseña coincide. Ante un hash mal formado, False."""
     if not password or not stored:
         return False
     try:
-        algorithm, iterations_s, salt_hex, expected_hex = stored.split("$")
-    except ValueError:
-        return False
-    if algorithm != _ALGORITHM:
-        return False
-    try:
-        iterations = int(iterations_s)
+        algoritmo, iteraciones, salt_hex, esperado_hex = stored.split("$")
+        iteraciones = int(iteraciones)
         salt = bytes.fromhex(salt_hex)
-        expected = bytes.fromhex(expected_hex)
+        esperado = bytes.fromhex(esperado_hex)
     except ValueError:
         return False
-
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
-    return hmac.compare_digest(digest, expected)
+    if algoritmo != _ALGORITMO:
+        return False
+    # compare_digest tarda lo mismo acierte o no: no filtra información por el tiempo.
+    return hmac.compare_digest(_pbkdf2(password, salt, iteraciones), esperado)

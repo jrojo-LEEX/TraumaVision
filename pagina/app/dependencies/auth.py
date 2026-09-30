@@ -1,13 +1,8 @@
 """
-auth.py — Autenticación por sesión para la interfaz web.
+auth.py — Sesión del usuario en la interfaz web.
 
-El usuario se guarda en la cookie de sesión firmada (SessionMiddleware) como
-`user_id`. Estas dependencias lo resuelven contra la base en cada request.
-
-Uso:
-    @router.get("/algo")
-    async def algo(user: User = Depends(require_user)):
-        ...
+La cookie de sesión guarda `user_id`; estas dependencias lo buscan en la base
+en cada request.
 """
 
 from typing import Optional
@@ -18,35 +13,25 @@ from sqlalchemy.orm import Session
 from app.database import crud
 from app.database.db import get_db
 from app.database.models import User
+from app.dependencies.csrf import rotate_csrf_token
 
 SESSION_USER_KEY = "user_id"
 
 
-def get_current_user(
-    request: Request,
-    db: Session = Depends(get_db),
-) -> Optional[User]:
-    """Devuelve el usuario logueado, o None. No bloquea el request."""
+def get_current_user(request: Request, db: Session = Depends(get_db)) -> Optional[User]:
+    """El usuario logueado, o None si no hay sesión."""
     user_id = request.session.get(SESSION_USER_KEY)
     if not user_id:
         return None
     user = crud.get_user_by_id(db, int(user_id))
     if user is None:
-        # La sesión apunta a un usuario borrado o desactivado: se limpia.
+        # La sesión apunta a un usuario borrado o desactivado.
         request.session.clear()
-        return None
     return user
 
 
-def require_user(
-    request: Request,
-    db: Session = Depends(get_db),
-) -> User:
-    """Exige sesión activa. Si no hay, redirige al login.
-
-    Se responde 303 con Location en vez de 401 para que el navegador vaya
-    directo al formulario, conservando en `next` la página pedida.
-    """
+def require_user(request: Request, db: Session = Depends(get_db)) -> User:
+    """Exige sesión. Si no hay, redirige (303) al login recordando la página pedida en `next`."""
     user = get_current_user(request, db)
     if user is None:
         destino = request.url.path
@@ -61,19 +46,15 @@ def require_user(
 
 
 def require_admin(user: User = Depends(require_user)) -> User:
-    """Exige que el usuario logueado sea administrador."""
     if not user.is_admin:
         raise HTTPException(status_code=403, detail="Se requieren permisos de administrador.")
     return user
 
 
 def login_user(request: Request, user: User) -> None:
-    """Registra al usuario en la sesión y rota el token CSRF."""
-    from app.dependencies.csrf import rotate_csrf_token
-
     request.session.clear()
     request.session[SESSION_USER_KEY] = user.id
-    # Token nuevo tras autenticarse: evita la fijación de sesión.
+    # Token CSRF nuevo al autenticarse: evita la fijación de sesión.
     rotate_csrf_token(request)
 
 

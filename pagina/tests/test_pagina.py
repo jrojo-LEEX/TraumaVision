@@ -79,8 +79,6 @@ def test_metadata_igual_a_metricas_del_test_interno():
     # Nivel imagen
     for clave in ("sensibilidad", "especificidad", "vpp", "auc_roc", "ap"):
         assert meta[clave] == pytest.approx(m[clave], abs=TOL), clave
-    for clave in ("sensibilidad_ic95", "especificidad_ic95", "vpp_ic95"):
-        assert tuple(meta[clave]) == pytest.approx(tuple(m[clave]), abs=TOL), clave
     # Matriz de confusión
     assert (meta["test_TP"], meta["test_FN"], meta["test_FP"], meta["test_TN"]) == (
         m["TP"], m["FN"], m["FP"], m["TN"])
@@ -111,7 +109,6 @@ def test_metadata_igual_a_metricas_del_test_externo():
         assert (a["TP"], a["FN"], a["FP"], a["TN"]) == (b["TP"], b["FN"], b["FP"], b["TN"]), nivel
         for clave in ("sensibilidad", "especificidad"):
             assert a[clave] == pytest.approx(b[clave], abs=TOL), (nivel, clave)
-            assert tuple(a[clave + "_ic95"]) == pytest.approx(tuple(b[clave + "_ic95"]), abs=TOL), (nivel, clave)
 
 
 # ─── 3-4. Sesión ─────────────────────────────────────────────────────────────

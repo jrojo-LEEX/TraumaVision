@@ -1,25 +1,16 @@
 """
-models.py — Modelos de las tablas de la base de datos.
+models.py — Tablas de la base de datos.
 
-Cada clase es una tabla y cada atributo una columna. Es el diseño de las fichas
-donde la app guarda usuarios, análisis, hallazgos y feedback.
+Cada clase es una tabla y cada atributo una columna.
 """
 
 from datetime import datetime, timezone
 
-from sqlalchemy import (
-    Boolean,
-    Column,
-    DateTime,
-    Float,
-    ForeignKey,
-    Integer,
-    String,
-    Text,
-)
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from app.database.db import Base
+from config.settings import ABNORMAL_THRESHOLD
 
 
 def _utcnow() -> datetime:
@@ -34,8 +25,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
     name = Column(String(255), nullable=False)
-    # PBKDF2-HMAC-SHA256 con salt por usuario. Formato: "pbkdf2_sha256$iter$salt$hash"
-    password_hash = Column(String(255), nullable=False, default="")
+    password_hash = Column(String(255), nullable=False, default="")  # ver app/security.py
     is_admin = Column(Boolean, nullable=False, default=False)
     is_active = Column(Boolean, nullable=False, default=True)
     picture_url = Column(String(500))
@@ -47,7 +37,7 @@ class User(Base):
 
 
 class Study(Base):
-    """Estudio multi-imagen (ZIP con varios cortes DICOM)."""
+    """Estudio de varias imágenes (un ZIP con DICOM)."""
 
     __tablename__ = "studies"
 
@@ -65,7 +55,7 @@ class Study(Base):
 
 
 class Analysis(Base):
-    """Un análisis realizado sobre una imagen."""
+    """El análisis de una imagen."""
 
     __tablename__ = "analyses"
 
@@ -74,13 +64,10 @@ class Analysis(Base):
     study_id = Column(Integer, ForeignKey("studies.id"), nullable=True, index=True)
 
     original_image_path = Column(String(500), nullable=False)
-    # Antes se llamaba heatmap_image_path, herencia de la etapa Grad-CAM. Lo que
-    # guarda es la imagen con los bounding boxes dibujados, no un mapa de calor.
-    annotated_image_path = Column(String(500))
+    annotated_image_path = Column(String(500))  # la imagen con las cajas dibujadas
     report_text = Column(Text)
 
-    # Antes se llamaba fracture_probability. Es el máximo de las confianzas
-    # post-NMS de YOLO: NO es una probabilidad de fractura.
+    # El score más alto de YOLO después de NMS. NO es una probabilidad de fractura.
     max_detection_confidence = Column(Float, default=0.0)
     is_abnormal = Column(Boolean, default=False)
     inference_time_ms = Column(Float)
@@ -100,18 +87,12 @@ class Analysis(Base):
 
     @property
     def findings_above_abnormal(self) -> int:
-        """Cajas que superan el umbral de anormalidad.
-
-        Distinto de len(detection_boxes), que incluye los hallazgos de baja
-        confianza que se dibujan sólo como referencia.
-        """
-        from config.settings import ABNORMAL_THRESHOLD
-
+        """Cajas con confianza en o sobre el umbral de anormalidad."""
         return sum(1 for b in self.detection_boxes if b.confidence >= ABNORMAL_THRESHOLD)
 
 
 class DetectionBox(Base):
-    """Bounding box individual de un análisis."""
+    """Una caja (bounding box) de un análisis, en píxeles de la imagen original."""
 
     __tablename__ = "detection_boxes"
 
@@ -128,7 +109,7 @@ class DetectionBox(Base):
 
 
 class Feedback(Base):
-    """Opinión del médico sobre un análisis."""
+    """Opinión del médico sobre un análisis (una por análisis)."""
 
     __tablename__ = "feedbacks"
 
@@ -140,8 +121,3 @@ class Feedback(Base):
     created_at = Column(DateTime, default=_utcnow)
 
     analysis = relationship("Analysis", back_populates="feedback")
-
-
-# Registro explícito de todas las tablas, para que create_all() nunca dependa
-# del efecto colateral de importar el módulo.
-ALL_MODELS = (User, Study, Analysis, DetectionBox, Feedback)

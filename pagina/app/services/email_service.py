@@ -1,10 +1,8 @@
 """
 email_service.py — Envía el informe PDF por mail.
 
-Usa SMTP con STARTTLS y verifica el certificado del servidor, así el PDF
-(que lleva la radiografía) viaja cifrado y a quien corresponde. Cada envío
-queda anotado en el log: análisis, usuario, destino y resultado. Nunca la
-contraseña.
+SMTP con STARTTLS y certificado verificado. Cada envío queda en el log
+(nunca la contraseña).
 """
 
 import logging
@@ -17,11 +15,7 @@ from config.settings import APP_NAME, SMTP_EMAIL, SMTP_PASSWORD, SMTP_PORT, SMTP
 logger = logging.getLogger("traumavision.email")
 
 
-def enviar_informe(destino: str, analysis_id: int, usuario: str, pdf: bytes) -> bool:
-    """Manda el PDF como adjunto. Devuelve True si salió bien."""
-    if not SMTP_EMAIL or not SMTP_PASSWORD:
-        return False
-
+def _armar_mensaje(destino: str, analysis_id: int, usuario: str, pdf: bytes) -> EmailMessage:
     mensaje = EmailMessage()
     mensaje["From"] = f"{APP_NAME} <{SMTP_EMAIL}>"
     mensaje["To"] = destino
@@ -33,7 +27,15 @@ def enviar_informe(destino: str, analysis_id: int, usuario: str, pdf: bytes) -> 
     )
     mensaje.add_attachment(pdf, maintype="application", subtype="pdf",
                            filename=f"traumavision_informe_{analysis_id}.pdf")
+    return mensaje
 
+
+def enviar_informe(destino: str, analysis_id: int, usuario: str, pdf: bytes) -> bool:
+    """Manda el PDF como adjunto. Devuelve True si salió bien."""
+    if not SMTP_EMAIL or not SMTP_PASSWORD:
+        return False
+
+    mensaje = _armar_mensaje(destino, analysis_id, usuario, pdf)
     try:
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=20) as servidor:
             servidor.starttls(context=ssl.create_default_context())

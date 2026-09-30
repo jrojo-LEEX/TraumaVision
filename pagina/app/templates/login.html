@@ -49,8 +49,6 @@
   {% if demo_mode and demo_users %}
   <details class="demo-panel">
     <summary>{{ m.icon('chevron', 'chev') }} Cuentas de demostración</summary>
-    {# La cuenta de administración no viene en `demo_users` a propósito: puede
-       exportar la base entera y su clave no se publica en la portada. #}
     <p class="demo-note">Cuentas de prueba para la demostración. La cuenta de administración no se publica acá.</p>
     <div class="demo-list">
       {% for u in demo_users %}

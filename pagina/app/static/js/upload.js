@@ -1,13 +1,4 @@
-/*
- * upload.js — Zona de carga.
- *
- * El archivo anterior no lo referenciaba ninguna plantilla Y apuntaba a IDs
- * que ya no existían (`drop-zone` contra `drop-zone-single`): estaba muerto
- * por partida doble. La clase `.dragover` figuraba en el CSS y nadie se la
- * aplicaba nunca, y `#preview-container` quedaba oculto para siempre. El
- * usuario elegía una imagen y apretaba "Analizar" sin ninguna señal de qué
- * archivo había elegido.
- */
+/* upload.js — Pantalla de carga */
 (function () {
   'use strict';
 
@@ -17,6 +8,7 @@
     return (bytes / 1024 / 1024).toFixed(1) + ' MB';
   }
 
+  /* Zona de arrastre con vista previa del archivo elegido */
   function setupZone(zone) {
     var input = zone.querySelector('input[type=file]');
     if (!input) return;
@@ -27,7 +19,6 @@
     var sizeEl = chosen ? chosen.querySelector('[data-file-size]') : null;
     var thumbEl = chosen ? chosen.querySelector('[data-file-thumb]') : null;
 
-    /* Arrastrar y soltar. */
     ['dragenter', 'dragover'].forEach(function (ev) {
       zone.addEventListener(ev, function (e) {
         e.preventDefault(); e.stopPropagation();
@@ -47,7 +38,6 @@
       input.dispatchEvent(new Event('change', { bubbles: true }));
     });
 
-    /* Confirmación visible de qué archivo se eligió. */
     input.addEventListener('change', function () {
       if (!input.files || !input.files.length || !chosen) return;
       var f = input.files[0];
@@ -56,9 +46,6 @@
       chosen.classList.add('is-visible');
 
       if (thumbEl) {
-        /* Vista previa sólo de lo que el navegador sabe dibujar: un .dcm o un
-           .zip no se previsualizan, y prometer una miniatura que no aparece
-           es peor que no prometerla. */
         var esImagen = f.type && f.type.indexOf('image/') === 0;
         if (esImagen) {
           var url = URL.createObjectURL(f);
@@ -75,7 +62,7 @@
   window.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('[data-dropzone]').forEach(setupZone);
 
-    /* Selección de región. */
+    /* Selección de región */
     var cards = document.querySelectorAll('[data-region-card]');
     cards.forEach(function (card) {
       card.addEventListener('click', function () {
@@ -88,7 +75,7 @@
       });
     });
 
-    /* Pestañas. */
+    /* Pestañas: imagen suelta o estudio */
     var tabs = document.querySelectorAll('[data-tab]');
     tabs.forEach(function (tab) {
       tab.addEventListener('click', function () {
@@ -102,8 +89,7 @@
       });
     });
 
-    /* Overlay de progreso: la inferencia tarda segundos y un estudio
-       puede tardar minutos. Sin señal visible parece colgado. */
+    /* Overlay de progreso mientras corre el modelo */
     var overlay = document.getElementById('progress-overlay');
     if (!overlay) return;
     var titulo = document.getElementById('progress-title');
@@ -114,11 +100,6 @@
     var cronometro = null;
     var urlPlaca = null;
 
-    /* La placa muestra la imagen que se está analizando, no un ícono. Sólo
-       lo que el navegador sabe dibujar: un .dcm o un .zip no se
-       previsualizan y prometer una miniatura que no aparece es peor que no
-       prometerla. Sin imagen, la placa queda como superficie de
-       instrumento (la graticula del CSS) y la banda igual la recorre. */
     function cargarPlaca(file) {
       if (!thumb || !placa) return;
       if (!file || !file.type || file.type.indexOf('image/') !== 0) return;
@@ -135,9 +116,6 @@
       overlay.classList.add('open');
       var t = 0;
       segundos.textContent = '0';
-      /* El cronómetro es la prueba de vida del sistema y no depende de
-         ninguna animación: con `prefers-reduced-motion` es lo único que se
-         mueve, y alcanza. */
       cronometro = setInterval(function () { t += 1; segundos.textContent = String(t); }, 1000);
     }
 
@@ -160,7 +138,7 @@
       });
     }
 
-    /* Si el usuario vuelve con el botón atrás, el overlay no debe quedar abierto. */
+    /* Al volver con «atrás» el overlay se cierra */
     window.addEventListener('pageshow', function () {
       overlay.classList.remove('open');
       if (cronometro) { clearInterval(cronometro); cronometro = null; }

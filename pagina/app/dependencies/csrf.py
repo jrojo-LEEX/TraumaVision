@@ -1,27 +1,9 @@
 """
 csrf.py — Protección contra Cross-Site Request Forgery.
 
-EL ATAQUE QUE EVITA
-La sesión vive en una cookie. El navegador la manda automáticamente en toda
-petición al dominio, incluso si la petición la originó otra página. Sin esta
-protección, un sitio cualquiera podía incluir:
-
-    <form action="http://localhost:8000/feedback/submit" method="post">
-      <input name="analysis_id" value="12">
-      <input name="agreed" value="false">
-    </form>
-    <script>document.forms[0].submit()</script>
-
-y un médico logueado que visitara esa página registraba una opinión sobre un
-análisis sin enterarse. Lo mismo con la subida de estudios o el logout.
-
-CÓMO FUNCIONA
-Se genera un token aleatorio por sesión, se incrusta como campo oculto en cada
-formulario y se verifica en cada POST. El atacante no puede leerlo (la política
-de mismo origen se lo impide), así que no puede construir la petición.
-
-Se compara con `secrets.compare_digest` para no filtrar información por el
-tiempo de comparación.
+Cada sesión tiene un token aleatorio que va oculto en los formularios (o en
+el header X-CSRF-Token) y se verifica en cada POST. Otra página no puede
+leerlo, así que no puede falsificar un envío en nombre del médico.
 """
 
 import secrets
@@ -29,50 +11,32 @@ import secrets
 from fastapi import HTTPException, Request
 
 SESSION_CSRF_KEY = "csrf_token"
-FORM_FIELD = "csrf_token"
 
 
 def get_csrf_token(request: Request) -> str:
-    """Devuelve el token de la sesión, creándolo la primera vez."""
-    token = request.session.get(SESSION_CSRF_KEY)
-    if not token:
-        token = secrets.token_urlsafe(32)
-        request.session[SESSION_CSRF_KEY] = token
-    return token
+    """El token de la sesión; lo crea la primera vez."""
+    if not request.session.get(SESSION_CSRF_KEY):
+        rotate_csrf_token(request)
+    return request.session[SESSION_CSRF_KEY]
+
+
+def rotate_csrf_token(request: Request) -> None:
+    request.session[SESSION_CSRF_KEY] = secrets.token_urlsafe(32)
 
 
 async def verify_csrf(request: Request) -> None:
-    """Dependency para endpoints POST que usan sesión.
-
-    Raises:
-        HTTPException 403: falta el token o no coincide con el de la sesión.
-    """
+    """Dependencia de los POST: 403 si falta el token o no coincide con el de la sesión."""
     esperado = request.session.get(SESSION_CSRF_KEY)
 
     enviado = request.headers.get("X-CSRF-Token")
     if not enviado:
         try:
-            formulario = await request.form()
-            enviado = formulario.get(FORM_FIELD)
+            enviado = (await request.form()).get("csrf_token")
         except Exception:
             enviado = None
 
     if not esperado or not enviado or not secrets.compare_digest(str(esperado), str(enviado)):
         raise HTTPException(
             status_code=403,
-            detail=(
-                "Token de seguridad inválido o vencido. "
-                "Recargá la página e intentá de nuevo."
-            ),
+            detail="Token de seguridad inválido o vencido. Recargá la página e intentá de nuevo.",
         )
-
-
-def rotate_csrf_token(request: Request) -> str:
-    """Genera un token nuevo. Se llama al iniciar sesión.
-
-    Rotarlo en el login evita la fijación de sesión: un token conocido de
-    antemano por un atacante deja de servir en cuanto el usuario se autentica.
-    """
-    token = secrets.token_urlsafe(32)
-    request.session[SESSION_CSRF_KEY] = token
-    return token

@@ -15,10 +15,6 @@
   </div>
 </div>
 
-{# ═══ Totales del sistema ═══
-     Sin tarjetas: cifras sobre reglas de 1 px, la misma gramática que la
-     pantalla de métricas. Ocho cajas idénticas no jerarquizaban nada — el
-     ojo terminaba contando rectángulos en vez de leer los números. #}
 <section class="metrics-section">
   <div class="metrics-head">
     <span class="eyebrow">Sistema completo</span>
@@ -39,8 +35,6 @@
     <div class="fig">
       <span class="fig-v">{{ global.anormales }}</span>
       <span class="fig-l">Con hallazgo</span>
-      {# La proporción sobre el total pasa por la misma macro que el resto:
-         sin muestra suficiente se ve el recuento, no un porcentaje. #}
       <span class="fig-n">{% if global.anormal.total %}{{ m.tasa_celda(global.anormal) }} del total{% endif %}</span>
     </div>
     {{ m.tasa_fig(global.acuerdo, 'Acuerdo médico e IA', 'opiniones registradas') }}
@@ -52,7 +46,6 @@
   </div>
 </section>
 
-{# ═══ Por usuario ═══ #}
 <section class="metrics-section">
   <div class="metrics-head">
     <span class="eyebrow">Actividad por usuario</span>
@@ -94,13 +87,8 @@
 </p>
 </section>
 
-{# ═══ Modelo en producción ═══ #}
 {% set meta = model_metadata.get('muneca_pediatrica') %}
 {% if meta %}
-{# La fecha de medición NO es una cifra: puesta en el mismo hueco tipográfico
-   que un número —mono, tamaño de display, columna angosta— «2026-08-24» se
-   partía en dos renglones dentro de su tarjeta. Va donde ya va en la
-   pantalla de métricas: como dato del encabezado, no como figura. #}
 <section class="metrics-section">
   <div class="metrics-head">
     <span class="eyebrow">Modelo en producción</span>

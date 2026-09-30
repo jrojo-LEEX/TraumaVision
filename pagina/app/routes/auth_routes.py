@@ -1,17 +1,10 @@
 """
 auth_routes.py — Inicio y cierre de sesión.
 
-  GET  /login    formulario
+  GET  /login    formulario (en modo demo lista las cuentas de prueba)
   POST /login    valida credenciales y abre la sesión
   POST /logout   cierra la sesión
-
-En modo demo (DEMO_MODE=true) la pantalla de login lista las cuentas de
-demostración SIN privilegio con su contraseña, para que el tribunal pueda
-entrar sin credenciales previas. La cuenta admin se crea pero no se publica
-(ver demo_seed.py). Con DEMO_MODE=false la lista no se muestra.
 """
-
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -30,13 +23,12 @@ router = APIRouter()
 
 templates = crear_templates()
 
-# Intentos de login por IP y por hora, para que no se pueda probar contraseñas
-# a fuerza bruta contra las diez cuentas conocidas.
+# Tope contra la fuerza bruta de contraseñas.
 _MAX_INTENTOS_POR_HORA = 40
 
 
-def _login_context(request: Request, **extra) -> dict:
-    return {
+def _pagina_login(request: Request, status_code: int = 200, **extra):
+    contexto = {
         "app_name": APP_NAME,
         "disclaimer": LEGAL_DISCLAIMER,
         "demo_mode": DEMO_MODE,
@@ -44,10 +36,11 @@ def _login_context(request: Request, **extra) -> dict:
         "csrf_token": get_csrf_token(request),
         **extra,
     }
+    return templates.TemplateResponse(request, "login.html", contexto, status_code=status_code)
 
 
 def _destino_seguro(next_url: str | None) -> str:
-    """Evita el open redirect: sólo se aceptan rutas internas."""
+    """Sólo rutas internas: evita que `next` redirija a otro sitio."""
     if not next_url or not next_url.startswith("/") or next_url.startswith("//"):
         return "/analysis/upload"
     return next_url
@@ -61,9 +54,7 @@ async def login_page(
 ):
     if get_current_user(request, db) is not None:
         return RedirectResponse(url=_destino_seguro(next), status_code=303)
-    return templates.TemplateResponse(
-        request, "login.html", _login_context(request, next=next or "")
-    )
+    return _pagina_login(request, next=next or "")
 
 
 @router.post("/login", response_class=HTMLResponse)
@@ -75,26 +66,18 @@ async def login_submit(
     db: Session = Depends(get_db),
 ):
     ip = request.client.host if request.client else "desconocida"
-    permitido, _ = check_and_consume(f"login:{ip}", _MAX_INTENTOS_POR_HORA)
-    if not permitido:
-        return templates.TemplateResponse(
-            request, "login.html",
-            _login_context(
-                request,
-                next=next,
-                error="Demasiados intentos fallidos. Esperá unos minutos.",
-            ),
-            status_code=429,
+    if not check_and_consume(f"login:{ip}", _MAX_INTENTOS_POR_HORA):
+        return _pagina_login(
+            request, status_code=429,
+            next=next, error="Demasiados intentos fallidos. Esperá unos minutos.",
         )
 
     user = crud.authenticate_user(db, email, password)
     if user is None:
-        # Mismo mensaje para email inexistente y contraseña incorrecta: no hay
-        # que revelar cuáles de las cuentas existen.
-        return templates.TemplateResponse(
-            request, "login.html",
-            _login_context(request, next=next, error="Email o contraseña incorrectos.", email=email),
-            status_code=401,
+        # El mismo mensaje para email inexistente y contraseña mala: no revela qué cuentas existen.
+        return _pagina_login(
+            request, status_code=401,
+            next=next, error="Email o contraseña incorrectos.", email=email,
         )
 
     login_user(request, user)

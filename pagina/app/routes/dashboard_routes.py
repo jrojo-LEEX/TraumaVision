@@ -1,12 +1,8 @@
 """
-dashboard_routes.py — Estadísticas de uso y exportación de datos.
+dashboard_routes.py — Métricas del médico logueado y exportación CSV.
 
-Las métricas son SIEMPRE del usuario logueado: cada médico ve su práctica.
-La vista global vive en /admin (app/routes/admin_routes.py).
-
-Exportación CSV: pensada para abrir directo en Excel en configuración
-regional española/argentina — separador ';' y BOM UTF-8 (sin el BOM, Excel
-interpreta los acentos como mojibake; con coma, mete todo en una columna).
+Las métricas cuentan sólo análisis del modelo vigente. Los CSV salen con ';'
+y BOM UTF-8 para que Excel en español los abra bien.
 """
 
 import csv
@@ -50,23 +46,9 @@ templates = crear_templates()
 
 
 def _registros(db: Session, user: User) -> list[dict]:
-    """UNA fila por análisis, con la opinión del médico pegada al lado.
+    """Una fila por análisis vigente del usuario, con su opinión al lado.
 
-    Las métricas de concordancia se abren por propiedades del ANÁLISIS —qué
-    dijo el sistema, con cuánta seguridad, en qué nivel de triage— así que la
-    opinión tiene que viajar junto al análisis que la motivó. Con dos listas
-    sueltas (análisis por un lado, opiniones por el otro) esa pregunta no se
-    puede contestar: no hay por dónde unirlas.
-
-    `agreed` es None cuando todavía no se opinó, y eso NO es lo mismo que un
-    desacuerdo. La cobertura de revisión se calcula justamente contando esos
-    None, así que el campo no se rellena con un valor por defecto.
-
-    El conteo de zonas sale de una sola consulta agrupada y no de N consultas
-    dentro del bucle.
-
-    Sólo análisis del modelo vigente (y por lo tanto sólo sus opiniones): los
-    de modelos anteriores siguen en el historial, pero no en las métricas.
+    `agreed` queda en None si el médico todavía no opinó (no es un desacuerdo).
     """
     analyses = crud.get_analyses_for_stats(db, user_id=user.id)
     ids = [a.id for a in analyses]
@@ -76,15 +58,14 @@ def _registros(db: Session, user: User) -> list[dict]:
     if ids:
         opiniones = {
             f.analysis_id: f.agreed
-            for f in db.query(Feedback).filter(Feedback.analysis_id.in_(ids)).all()
+            for f in db.query(Feedback).filter(Feedback.analysis_id.in_(ids))
         }
-        zonas = {
-            fila[0]: fila[1]
-            for fila in db.query(DetectionBox.analysis_id, func.count(DetectionBox.id))
+        zonas = dict(
+            db.query(DetectionBox.analysis_id, func.count(DetectionBox.id))
             .filter(DetectionBox.analysis_id.in_(ids))
             .group_by(DetectionBox.analysis_id)
             .all()
-        }
+        )
 
     return [
         {
@@ -102,22 +83,16 @@ def _registros(db: Session, user: User) -> list[dict]:
     ]
 
 
-def _datos_usuario(db: Session, user: User) -> tuple[list[dict], list[dict]]:
-    """Forma vieja —dos listas sueltas— que siguen consumiendo el resumen del
-    dashboard y el endpoint JSON. Se arma a partir de `_registros` para que no
-    existan dos caminos que puedan contar cosas distintas."""
-    registros = _registros(db, user)
-    feedbacks_data = [
+def _opiniones(registros: list[dict]) -> list[dict]:
+    """Sólo los registros que tienen opinión, en el formato que pide stats.py."""
+    return [
         {"agreed": r["agreed"], "timestamp": r["timestamp"]}
         for r in registros if r["agreed"] is not None
     ]
-    return registros, feedbacks_data
 
 
 def _desacuerdos(db: Session, user_id: int, limite: int = 15) -> list[dict]:
-    """Los casos donde el médico corrigió al sistema: el material más valioso
-    del dashboard, porque son los candidatos a reanotación y reentrenamiento.
-    Sólo los del modelo vigente, como el resto de la pantalla."""
+    """Los últimos casos en que el médico no coincidió con el sistema."""
     filas = (
         db.query(Feedback, Analysis)
         .join(Analysis, Feedback.analysis_id == Analysis.id)
@@ -146,10 +121,11 @@ async def dashboard_page(
     db: Session = Depends(get_db),
     user: User = Depends(require_user),
 ):
-    analyses_data, feedbacks_data = _datos_usuario(db, user)
-    per_day = analyses_per_day(analyses_data)
-    urgencias = urgency_distribution(analyses_data)
-    confianzas = confidence_distribution(analyses_data)
+    registros = _registros(db, user)
+    opiniones = _opiniones(registros)
+    per_day = analyses_per_day(registros)
+    urgencias = urgency_distribution(registros)
+    confianzas = confidence_distribution(registros)
 
     return templates.TemplateResponse(
         request, "dashboard.html",
@@ -158,34 +134,22 @@ async def dashboard_page(
             "disclaimer": LEGAL_DISCLAIMER,
             "current_user": user,
             "csrf_token": get_csrf_token(request),
-            "summary": dashboard_summary(analyses_data, feedbacks_data),
-            # Listas de Python, no cadenas ya serializadas: la plantilla
-            # las inyecta con el filtro tojson, que escapa para contexto de
-            # script. Antes se serializaban acá y se marcaban como seguras en
-            # la plantilla, lo que desactiva todo el escapado dentro del
-            # bloque de script.
+            "summary": dashboard_summary(registros, opiniones),
+            # Listas de Python: la plantilla las pasa al JS con el filtro tojson.
             "per_day_labels": per_day["labels"],
             "per_day_values": per_day["values"],
             "urgency_labels": urgencias["labels"],
             "urgency_values": urgencias["values"],
             "conf_labels": confianzas["labels"],
             "conf_values": confianzas["values"],
-            "agreement": calculate_agreement_rate(feedbacks_data),
-            # Las tres lecturas nuevas de la pantalla. Los umbrales que
-            # parten las franjas de seguridad salen de settings, no de acá:
-            # son los mismos con los que el visor decide qué dibuja y qué
-            # clasifica como anormal.
-            "concordancia": concordancia(
-                analyses_data, CONFIDENCE_THRESHOLD, ABNORMAL_THRESHOLD),
-            "sistema": desempeno_sistema(analyses_data),
-            "practica": practica(analyses_data),
+            "agreement": calculate_agreement_rate(opiniones),
+            "concordancia": concordancia(registros, CONFIDENCE_THRESHOLD, ABNORMAL_THRESHOLD),
+            "sistema": desempeno_sistema(registros),
+            "practica": practica(registros),
             "umbral_dibujo": CONFIDENCE_THRESHOLD,
             "corte_aviso": ABNORMAL_THRESHOLD,
             "desacuerdos": _desacuerdos(db, user.id),
             "model_metadata": MODEL_METADATA,
-            # Métricas cuenta sólo el modelo vigente; la pantalla dice cuál y
-            # cuántos análisis anteriores quedaron afuera (siguen en el
-            # historial).
             "modelo_vigente": MODELO_VIGENTE,
             "n_anteriores": crud.count_analyses_anteriores(db, user_id=user.id),
         },
@@ -197,38 +161,23 @@ async def get_stats(
     db: Session = Depends(get_db),
     user: User = Depends(require_user),
 ):
-    """El resumen de Métricas en JSON: sólo análisis del modelo vigente."""
-    analyses_data, feedbacks_data = _datos_usuario(db, user)
-    return JSONResponse(content=dashboard_summary(analyses_data, feedbacks_data))
+    """El resumen de Métricas en JSON."""
+    registros = _registros(db, user)
+    return JSONResponse(content=dashboard_summary(registros, _opiniones(registros)))
 
 
-# ─── Exportación CSV ─────────────────────────────────────────────────────────
+# --- Exportación CSV ---
 
-# Los cuatro caracteres con los que Excel, LibreOffice y Google Sheets abren
-# una FÓRMULA, más el tabulador y el retorno de carro, que también arrancan
-# expresión en algunos parsers.
+# Caracteres con los que una planilla empieza a leer una fórmula.
 _INICIOS_DE_FORMULA = ("=", "+", "-", "@", "\t", "\r")
-
-# Un número, en cualquiera de las dos notaciones decimales. El sistema exporta
-# es-AR (coma), pero se acepta el punto para no depender de eso.
 _RE_NUMERO = re.compile(r"^[+-]?(\d+([.,]\d+)?|[.,]\d+)$")
 
 
 def _sanear_celda_csv(valor):
-    """Neutraliza la inyección de fórmulas sin romper los números.
+    """Evita que Excel ejecute como fórmula un texto escrito por un usuario.
 
-    Un médico escribe la observación de un desacuerdo; otro abre la planilla
-    exportada y Excel le EJECUTA lo que el primero escribió. Prefijar con
-    comilla simple obliga a la planilla a tratar la celda como texto; la
-    comilla no se ve en la celda.
-
-    El detalle que importa: `-12,5` empieza con `-` y **es un número**, no una
-    fórmula. Prefijarlo lo convertiría en texto y la planilla dejaría de poder
-    sumar la columna, que es para lo que se exporta. Por eso `+` y `-` sólo se
-    neutralizan cuando lo que sigue NO es un número (`-1+1` sí, `-12,5` no).
-
-    Los `int` y `float` se devuelven tal cual: no hay forma de que un número
-    de Python sea una fórmula.
+    Antepone una comilla simple, salvo a los números (como -12,5), que deben
+    seguir siendo números.
     """
     if valor is None:
         return ""
@@ -246,18 +195,13 @@ def _sanear_celda_csv(valor):
 
 
 def respuesta_csv(nombre_base: str, encabezados: list[str], filas) -> StreamingResponse:
-    """Arma la descarga CSV para Excel es-AR: BOM UTF-8 y separador ';'.
-
-    Es el único embudo de las cuatro exportaciones del sistema (las dos del
-    usuario y las dos globales del panel admin), así que el saneado va acá:
-    ninguna puede olvidárselo.
-    """
+    """La descarga CSV (BOM UTF-8 y ';'), con todas las celdas saneadas."""
     buffer = io.StringIO()
     escritor = csv.writer(buffer, delimiter=";", lineterminator="\n")
     escritor.writerow([_sanear_celda_csv(e) for e in encabezados])
     escritor.writerows([_sanear_celda_csv(c) for c in fila] for fila in filas)
 
-    contenido = "﻿" + buffer.getvalue()   # BOM: Excel detecta UTF-8
+    contenido = "﻿" + buffer.getvalue()  # BOM: Excel detecta UTF-8
     fecha = ahora_local().strftime("%Y%m%d")
     return StreamingResponse(
         iter([contenido.encode("utf-8")]),
@@ -266,13 +210,18 @@ def respuesta_csv(nombre_base: str, encabezados: list[str], filas) -> StreamingR
     )
 
 
+ENCABEZADOS_ANALISIS = [
+    "id", "fecha", "region", "clasificacion", "urgencia",
+    "confianza_maxima", "hallazgos_sobre_umbral", "regiones_marcadas",
+    "modelo", "inferencia_ms", "informe_texto",
+]
+
+
 def filas_analisis(analyses: list[Analysis]) -> list[list]:
     return [
         [
             a.id,
-            # La columna guarda UTC. Se exporta en la zona de presentación:
-            # una planilla que dice otro día que la pantalla no sirve de nada.
-            fmt_local(a.created_at, "%Y-%m-%d %H:%M"),
+            fmt_local(a.created_at, "%Y-%m-%d %H:%M"),  # la base guarda UTC
             a.anatomical_region or "",
             "anormal" if a.is_abnormal else "sin hallazgos",
             a.urgency or "",
@@ -281,19 +230,15 @@ def filas_analisis(analyses: list[Analysis]) -> list[list]:
             len(a.detection_boxes),
             a.model_version or "",
             f"{(a.inference_time_ms or 0):.0f}",
-            # El informe de texto TAL COMO SE GUARDÓ, también el de modelos
-            # anteriores (que la página ya no muestra). Es el dato crudo; en
-            # un solo renglón para que la planilla no parta la fila.
-            " ".join((a.report_text or "").split()),
+            " ".join((a.report_text or "").split()),  # en un solo renglón
         ]
         for a in analyses
     ]
 
 
-ENCABEZADOS_ANALISIS = [
-    "id", "fecha", "region", "clasificacion", "urgencia",
-    "confianza_maxima", "hallazgos_sobre_umbral", "regiones_marcadas",
-    "modelo", "inferencia_ms", "informe_texto",
+ENCABEZADOS_OPINIONES = [
+    "analisis_id", "fecha_opinion", "sistema_dijo", "opinion",
+    "diagnostico_correcto", "observaciones",
 ]
 
 
@@ -311,21 +256,12 @@ def filas_opiniones(pares: list[tuple[Feedback, Analysis]]) -> list[list]:
     ]
 
 
-ENCABEZADOS_OPINIONES = [
-    "analisis_id", "fecha_opinion", "sistema_dijo", "opinion",
-    "diagnostico_correcto", "observaciones",
-]
-
-
 @router.get("/export/analisis.csv")
 async def export_analisis(
     db: Session = Depends(get_db),
     user: User = Depends(require_user),
 ):
-    """Todos los análisis del usuario logueado, para planilla o análisis externo."""
-    # `filas_analisis` lee `findings_above_abnormal` y `len(detection_boxes)`
-    # de cada análisis: sin cargar las cajas por adelantado es una consulta
-    # por fila exportada.
+    """Todos los análisis del usuario (de cualquier modelo)."""
     analyses = (
         db.query(Analysis)
         .options(selectinload(Analysis.detection_boxes))
@@ -341,8 +277,7 @@ async def export_opiniones(
     db: Session = Depends(get_db),
     user: User = Depends(require_user),
 ):
-    """Las opiniones del usuario. Los desacuerdos son los candidatos a
-    reanotación para un futuro reentrenamiento."""
+    """Todas las opiniones del usuario."""
     pares = (
         db.query(Feedback, Analysis)
         .join(Analysis, Feedback.analysis_id == Analysis.id)

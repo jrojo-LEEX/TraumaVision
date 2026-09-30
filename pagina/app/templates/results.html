@@ -6,15 +6,10 @@
 {% block main_class %}main-stage{% endblock %}
 
 {% block head %}
-<script defer src="/static/js/viewer.js?v=21"></script>
+<script defer src="/static/js/viewer.js?v=22"></script>
 {% endblock %}
 
 {% block content %}
-{# El registro pertenece al dominio validado sólo si su región es la del
-   modelo vivo. Los análisis con región NULL o de modelos retirados no
-   muestran prioridad clínica: sus métricas no son las del modelo vivo.
-   Tampoco los de muñeca hechos con un modelo anterior (`modelo_anterior`):
-   la prioridad y el corte de aviso son del modelo vigente, no suyos. #}
 {% set out_of_domain = region_key != default_region %}
 {% set sin_prioridad = out_of_domain or modelo_anterior %}
 {% set conf = analysis.max_detection_confidence or 0 %}
@@ -23,25 +18,13 @@
 
 <div class="reader" data-viewer>
 
-  {# ══════════ Visor ══════════ #}
+  {# Visor #}
   <section class="stage" aria-label="Visor de la radiografía">
     {{ m.viewer_toolbar() }}
-    {# Sólo se ve en una columna, donde el panel de lectura cae bajo el
-       pliegue. Arriba del breakpoint el veredicto ya está en el panel. #}
     {{ m.verdict_strip(nivel, neutro=sin_prioridad, is_abnormal=is_abnormal) }}
 
     <div class="viewport" data-viewport tabindex="0"
          aria-label="Radiografía del análisis {{ analysis_id }}. Usá las flechas para desplazar, más y menos para el zoom.">
-      {# Dos capas de la MISMA imagen. Abajo la placa sin marcar; arriba la
-         anotada que devuelve el servidor, con las cajas quemadas.
-
-         Cuando el JS corre, la capa de arriba se apaga y las cajas se
-         redibujan como vectores desde las coordenadas que ya estaban en la
-         base de datos: así se pueden encender de a una desde el panel, y la
-         placa queda limpia de texto rojo encima de la anatomía.
-
-         Si el JS no corre, no hay degradación clínica: se ve exactamente lo
-         de siempre, la placa anotada por el servidor. #}
       <img class="stage-img stage-img-base" data-stage-base aria-hidden="true" alt=""
            src="/analysis/imagen/{{ original_image }}">
       <img class="stage-img stage-img-top" data-stage-img
@@ -68,17 +51,6 @@
       </div>
     </div>
 
-    {# EL QUEMADO, FUERA DE LA PELÍCULA. Sólo se ve debajo de 860, donde la
-       placa se lleva el ancho entero y no quedan esquinas negras: medido a
-       375, `MODELO / INFERENCIA` en #C9CCD0 caía sobre metacarpianos
-       blancos —1,2:1, ilegible— y encima tapaba 8 % de la anatomía. La
-       doctrina del visor dice «nunca sobre la anatomía»; en un teléfono no
-       hay película donde quemarlo, así que baja a la hoja.
-
-       No agrega dato: es el MISMO contenido del sobreimpreso, que a su vez
-       está en «Detalle técnico» y en el membrete del panel. Por eso va
-       `aria-hidden`, igual que la franja de veredicto: el lector de
-       pantalla no tiene pliegue y ya lo escuchó una vez. #}
     <p class="plate-meta" aria-hidden="true">
       <span><span class="ov-key">Análisis</span> <strong>{{ analysis_id }}</strong></span>
       <span><span class="ov-key">Región</span> {{ anatomical_region }}</span>
@@ -89,32 +61,21 @@
 
   </section>
 
-  {# EL ÚNICO FILETE ESTRUCTURAL DE LA PÁGINA, y es vertical. Va como
-     elemento propio y no como borde de una de las dos columnas: no
-     pertenece a ninguna de las dos, separa. #}
   <div class="split" aria-hidden="true"></div>
 
-  {# ══════════ Panel de lectura ══════════
-       Tres zonas y dos hairlines. Nada de tarjetas apiladas: lo que pesa,
-       pesa por tamaño y por aire. El triage está entero en el cuadro cero. #}
+  {# Panel de lectura #}
   <aside class="readout" data-find-host
          aria-label="Resultado del análisis"
          data-boxes="{{ boxes_json }}"
          data-abnormal-threshold="{{ abnormal_threshold }}"
          {% if sin_prioridad %}data-sin-corte{% endif %}>
 
-    {# Qué es esto, y de qué registro habla. La vuelta al historial no vive
-       más acá: está en la barra de navegación (siempre visible) y en las
-       acciones del pie. Acá arriba compite con el veredicto, que es lo
-       único que tiene que leerse primero. #}
     <div class="rd-top">
       <span class="eyebrow">Informe automatizado</span>
       <span class="rd-id">Análisis {{ analysis_id }}</span>
     </div>
 
     {% if out_of_domain %}
-    {# La única salvedad que sigue siendo permanente: no es una advertencia
-       de rutina, es que lo que se está mirando salió de un modelo retirado. #}
     <div class="domain-flag">
       {{ m.icon('alert') }}
       <div>
@@ -134,7 +95,7 @@
     </div>
     {% endif %}
 
-    {# ── 1. TRIAGE ── #}
+    {# Triage #}
     <div class="triage {{ m.verdict_class(nivel) }}">
       {{ m.urgency_rule(nivel, neutro=sin_prioridad) }}
       <p class="verdict-word">{{ m.verdict_word(nivel) }}</p>
@@ -151,15 +112,7 @@
       {{ m.scope_line(is_abnormal) }}
     </div>
 
-    {# ── 2. ZONAS MARCADAS, ligadas a la placa ──
-         Sin <hr> arriba: lo que separa el triage de las zonas marcadas es
-         el aire. El único filete horizontal del panel es el que abre el
-         grupo de plegables, más abajo.
-
-         El rótulo es llano —«Zonas marcadas», «seguridad»— porque es la
-         superficie de la pantalla. El nombre técnico del número no se
-         borra: vive un renglón abajo, en `find_unit`, y en el `title` de
-         cada fila. Simplificar es jerarquizar, no esconder. #}
+    {# Zonas marcadas #}
     <div class="finds">
       <div class="find-head">
         <h2 class="finds-title">Zonas marcadas</h2>
@@ -169,10 +122,6 @@
         <span class="find-count"><span class="num">{{ boxes|length }}</span> {{ 'zona' if boxes|length == 1 else 'zonas' }}</span>
         {% endif %}
       </div>
-      {# La aclaración estaba plegada dentro de "Detalle técnico". Es la que
-         impide leer la seguridad como riesgo, y no puede estar detrás de un
-         clic. Debajo de 860 esta misma frase, comprimida, va además en la franja
-         fija del visor: acá cae bajo el pliegue. #}
       {{ m.find_unit(corte) }}
 
       {% if boxes %}
@@ -190,7 +139,7 @@
       {% endif %}
     </div>
 
-    {# ── 3. TODO LO DEMÁS, plegado ── #}
+    {# Plegables #}
     {{ m.alcance_clinico(model_sensitivity, dominio_label,
                          modelo_vigente=modelo_vigente if sin_prioridad else none) }}
 
@@ -222,8 +171,6 @@
           <dd>{{ inference_time }} ms</dd>
         </dl>
         {% if informe_oculto %}
-        {# El informe guardado por un modelo anterior no se muestra: cita
-           probabilidades y calibradores que el sistema ya no sostiene. #}
         <p class="field-hint">{{ report_text }}</p>
         {% elif report_text %}
         <div class="report-text">{{ report_text }}</div>

@@ -1,5 +1,5 @@
 """
-analysis_routes.py — Rutas de análisis de radiografías.
+analysis_routes.py — Análisis de radiografías.
 
   GET  /analysis/upload              formulario de carga
   POST /analysis/upload              analiza una imagen
@@ -11,26 +11,25 @@ analysis_routes.py — Rutas de análisis de radiografías.
   GET  /analysis/study/{id}          resultado de un estudio
   GET  /analysis/imagen/{archivo}    sirve una imagen, previa verificación
 
-Todas exigen sesión iniciada y sólo devuelven datos del usuario logueado.
+Todas exigen sesión y sólo devuelven datos del usuario logueado.
 """
 
 import json
 import re
 import uuid
 from io import BytesIO
-from pathlib import Path
 
 import cv2
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageDraw, UnidentifiedImageError
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from app.database import crud
 from app.database.db import get_db
-from app.database.models import User
+from app.database.models import Analysis, User
 from app.dependencies.auth import require_user
 from app.dependencies.csrf import get_csrf_token, verify_csrf
 from app.plantillas import crear_templates
@@ -49,11 +48,11 @@ from config.settings import (
     DEFAULT_REGION,
     EMAIL_HABILITADO,
     EMAIL_POR_HORA,
-    MODELO_VIGENTE,
     LEGAL_DISCLAIMER,
     MAX_UPLOAD_SIZE_MB,
     MAX_ZIP_SIZE_MB,
     MODEL_METADATA,
+    MODELO_VIGENTE,
     REGION_AVAILABLE,
     REGION_LABELS,
     UPLOADS_DIR,
@@ -65,18 +64,11 @@ router = APIRouter()
 
 templates = crear_templates()
 
-# Tope de filas del historial. Antes eran 50, escritas a mano, y el chip
-# "Todos" contaba esas 50 mientras el dashboard contaba 121 análisis: el
-# número decía ser algo que no era.
-#
-# La tabla ya pagina de a 15 del lado del cliente, así que recortar la
-# consulta no ahorraba nada de lo que se ve — sólo escondía registros
-# clínicos. El tope queda como red de seguridad para una cuenta con años de
-# uso; si alguna vez se alcanza, la pantalla lo dice con el total real en
-# lugar de llamarlo "Todos".
+# Tope de filas del historial; la pantalla avisa si el total real es mayor.
 HISTORIAL_MAX_FILAS = 500
 
 _ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/bmp", "image/tiff", "application/dicom"}
+_TIPOS_ZIP = ("application/zip", "application/x-zip-compressed")
 _SAFE_FILENAME_RE = re.compile(r"^[A-Za-z0-9_\-]+\.(png|jpg|jpeg)$")
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
 _MENSAJES_MAIL = {
@@ -86,9 +78,15 @@ _MENSAJES_MAIL = {
     "error": "No se pudo enviar el mail. Revisá la configuración SMTP en el archivo .env.",
 }
 
+# Color de las cajas en el PDF de un análisis de un modelo anterior (violeta KIBBO 200).
+_CAJA_NEUTRA = "#CFC4F1"
+
+
+# ─── Ayudas ──────────────────────────────────────────────────────────────────
 
 def _base_context(request: Request, user: User) -> dict:
-    """Contexto común de todas las plantillas."""
+    """Contexto común de todas las plantillas de análisis."""
+    meta = MODEL_METADATA.get(DEFAULT_REGION)
     return {
         "app_name": APP_NAME,
         "disclaimer": LEGAL_DISCLAIMER,
@@ -100,80 +98,80 @@ def _base_context(request: Request, user: User) -> dict:
         "max_zip_mb": MAX_ZIP_SIZE_MB,
         "abnormal_threshold": ABNORMAL_THRESHOLD,
         "confidence_threshold": CONFIDENCE_THRESHOLD,
-        # Constantes de presentación. El bloque de alcance clínico cita el
-        # recall y el dominio validado: son constantes de configuración, no
-        # cálculos. Nada acá cambia una decisión, sólo la muestra.
-        "model_sensitivity": MODEL_METADATA.get(DEFAULT_REGION, {}).get("recall", 0.0),
-        "dominio_label": MODEL_METADATA.get(DEFAULT_REGION, {}).get(
-            "label", DEFAULT_REGION
-        ),
-        # La fila entera de la región por defecto. El bloque de alcance del
-        # visor citaba el ECE y el n de validación escritos a mano; con la
-        # metadata a mano los deriva igual que el dashboard. Es `None` si la
-        # región no está publicada, y entonces el bloque no cita métricas.
-        "meta": MODEL_METADATA.get(DEFAULT_REGION),
-        # El modelo vigente, para que el bloque de alcance de un análisis
-        # hecho con otro modelo diga de quién son las métricas que cita.
+        "model_sensitivity": (meta or {}).get("recall", 0.0),
+        "dominio_label": (meta or {}).get("label", DEFAULT_REGION),
+        "meta": meta,
         "modelo_vigente": MODELO_VIGENTE,
         "csrf_token": get_csrf_token(request),
     }
 
 
+def _upload_error(request: Request, user: User, mensaje: str, status_code: int = 200):
+    """Vuelve a mostrar el formulario de carga con un mensaje de error."""
+    return templates.TemplateResponse(
+        request, "upload.html",
+        {**_base_context(request, user), "error": mensaje},
+        status_code=status_code,
+    )
+
+
 def _texto_del_informe(analysis) -> str:
-    """El informe de texto que se puede mostrar (ver `texto_del_informe`)."""
     return texto_del_informe(analysis.model_version, analysis.report_text)
 
 
 def _modelo_anterior(region, model_version) -> bool:
-    """Análisis de la región validada hecho con un modelo que ya no está en uso.
-
-    Distinto de «fuera del dominio» (región retirada o sin registrar), que ya
-    tenía su aviso: éste es el caso de muñeca con v1, v2 o un registro viejo.
-    Se muestra con cajas e imagen, pero sin prioridad de triage ni el corte de
-    aviso del modelo vigente, que no son suyos.
-    """
+    """Análisis de muñeca hecho con un modelo que ya no está en uso."""
     return region == DEFAULT_REGION and not es_modelo_vigente(model_version)
 
 
+def _etiqueta_region(region) -> str:
+    return MODEL_METADATA.get(region, {}).get("label", region or "—")
+
+
 def _boxes_json(boxes) -> str:
-    """Las cajas YA PERSISTIDAS, serializadas para el cliente.
-
-    No calcula nada ni vuelve a inferir: lee `detection_boxes` tal como la
-    dejó el análisis y la pasa a la plantilla. Sirve para que el panel pueda
-    encender sobre la placa el hallazgo que el médico señala, en vez de
-    describir con palabras dónde está cada caja.
-
-    Las coordenadas están en el espacio de píxeles de la imagen original, y
-    la anotada tiene exactamente ese mismo tamaño, así que el cliente saca
-    las dimensiones del propio `naturalWidth`/`naturalHeight` y no hace
-    falta abrir el archivo en el servidor.
-
-    Ordenadas por confianza descendente para que el índice coincida con el
-    número de fila que muestra el panel.
-    """
+    """Las cajas guardadas, en JSON para el visor, de mayor a menor confianza."""
     ordenadas = sorted(boxes, key=lambda b: b.confidence, reverse=True)
     return json.dumps(
         [
-            {
-                "i": i,
-                "x1": b.x1,
-                "y1": b.y1,
-                "x2": b.x2,
-                "y2": b.y2,
-                "c": round(b.confidence, 4),
-            }
+            {"i": i, "x1": b.x1, "y1": b.y1, "x2": b.x2, "y2": b.y2, "c": round(b.confidence, 4)}
             for i, b in enumerate(ordenadas)
         ],
         separators=(",", ":"),
     )
 
 
-def _upload_error(request: Request, user: User, mensaje: str, status_code: int = 200):
-    return templates.TemplateResponse(
-        request, "upload.html",
-        {**_base_context(request, user), "error": mensaje},
-        status_code=status_code,
-    )
+def _cajas_para_guardar(result) -> list[dict]:
+    return [
+        {"x1": b.x1, "y1": b.y1, "x2": b.x2, "y2": b.y2, "confidence": b.confidence}
+        for b in result.boxes
+    ]
+
+
+def _guardar_anotada(result, nombre: str) -> None:
+    """Guarda la imagen con las cajas dibujadas (el modelo la devuelve en BGR)."""
+    anotada = Image.fromarray(cv2.cvtColor(result.annotated_image, cv2.COLOR_BGR2RGB))
+    anotada.save(str(UPLOADS_DIR / nombre))
+
+
+def _cargar_detector(region_key: str):
+    from src.detection.predict import FractureDetector
+
+    return FractureDetector.get(region_key)
+
+
+async def _archivo_del_formulario(request: Request) -> tuple[StarletteUploadFile | None, str]:
+    """Lee `file` y `region` del formulario.
+
+    Se lee acá y no en la firma de la ruta para que la sesión y el CSRF se
+    verifiquen antes de recibir el archivo.
+    """
+    form = await request.form()
+    archivo = form.get("file")
+    if not isinstance(archivo, StarletteUploadFile):
+        archivo = None
+    region = form.get("region")
+    region = region if isinstance(region, str) and region else DEFAULT_REGION
+    return archivo, region
 
 
 # ─── Formulario ──────────────────────────────────────────────────────────────
@@ -185,29 +183,6 @@ async def upload_page(request: Request, user: User = Depends(require_user)):
 
 # ─── Análisis de una imagen ──────────────────────────────────────────────────
 
-async def _archivo_del_formulario(request: Request) -> tuple[StarletteUploadFile | None, str]:
-    """Lee `file` y `region` del multipart, DESPUÉS de las dependencias.
-
-    Los dos handlers de análisis declaraban `file: UploadFile = File(...)` en
-    la firma. FastAPI parsea el cuerpo ANTES de resolver las dependencias
-    cuando hay parámetros de cuerpo, así que un anónimo podía mandar 60 MB
-    y el servidor se los tragaba enteros —a disco, por encima de 1 MB— para
-    recién después contestarle 303 al login (auditoría 2026-09-01, 04_web
-    H6). Sacando los parámetros de cuerpo de la firma, las dependencias se
-    resuelven en orden de declaración: `require_user` corta sin haber leído
-    un byte, y `verify_csrf` es el primero que toca el formulario.
-    """
-    form = await request.form()
-    archivo = form.get("file")
-    # El formulario crudo entrega el UploadFile de Starlette, del que el de
-    # FastAPI es subclase: hay que comprobar contra el padre.
-    if not isinstance(archivo, StarletteUploadFile):
-        archivo = None
-    region = form.get("region")
-    region = region if isinstance(region, str) and region else DEFAULT_REGION
-    return archivo, region
-
-
 @router.post("/upload")
 async def analyze_image(
     request: Request,
@@ -215,14 +190,12 @@ async def analyze_image(
     user: User = Depends(require_user),
     _: None = Depends(verify_csrf),
 ):
-    """Analiza una radiografía y muestra el resultado."""
+    """Analiza una radiografía y redirige a su resultado."""
     file, region = await _archivo_del_formulario(request)
     if file is None:
         return _upload_error(request, user, "No se recibió ningún archivo. Elegí una radiografía para analizar.")
 
-    filename_lower = (file.filename or "").lower()
-    is_dicom = filename_lower.endswith(".dcm") or file.content_type == "application/dicom"
-
+    is_dicom = (file.filename or "").lower().endswith(".dcm") or file.content_type == "application/dicom"
     if file.content_type not in _ALLOWED_IMAGE_TYPES and not is_dicom:
         return _upload_error(request, user, "Tipo de archivo no permitido. Use JPEG, PNG, BMP, TIFF o DICOM (.dcm).")
 
@@ -232,14 +205,12 @@ async def analyze_image(
     if not contents:
         return _upload_error(request, user, "El archivo está vacío.")
 
-    # Validar la región ANTES de tocar la imagen.
     try:
         region_key, routing_method = route_image(region)
     except HTTPException as exc:
         return _upload_error(request, user, exc.detail, status_code=exc.status_code)
 
-    # Decodificar. Un error acá es del archivo, no del modelo: antes los dos
-    # casos se reportaban como "el modelo no está disponible".
+    # Un error al decodificar es del archivo, no del modelo.
     try:
         if is_dicom:
             from src.preprocessing.transforms import load_dicom
@@ -252,71 +223,43 @@ async def analyze_image(
     except Exception as exc:
         return _upload_error(request, user, f"No se pudo procesar el archivo: {exc}")
 
-    # Cargar el modelo. Un error acá sí es del modelo.
     try:
-        from src.detection.predict import FractureDetector
-        detector = FractureDetector.get(region_key)
+        detector = _cargar_detector(region_key)
     except (FileNotFoundError, ValueError) as exc:
-        return _upload_error(
-            request, user,
-            f"El modelo de IA no está disponible: {exc}",
-            status_code=503,
-        )
+        return _upload_error(request, user, f"El modelo de IA no está disponible: {exc}", status_code=503)
 
-    analysis_uid = uuid.uuid4().hex[:12]
-    original_filename = f"{analysis_uid}_original.png"
-    annotated_filename = f"{analysis_uid}_annotated.png"
+    uid = uuid.uuid4().hex[:12]
+    original_filename = f"{uid}_original.png"
+    annotated_filename = f"{uid}_annotated.png"
 
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     image.convert("RGB").save(str(UPLOADS_DIR / original_filename))
 
-    # La inferencia es sincrónica y tarda cerca de un segundo en CPU (cuatro
-    # la primera vez). Dentro de un handler `async def` eso corría EN el
-    # bucle de eventos y la aplicación entera se congelaba mientras el
-    # modelo pensaba: ni el historial de otra pestaña, ni /health, ni el
-    # propio overlay de progreso (auditoría 2026-09-01, 04_web H7).
-    #
-    # Se envuelve SÓLO la inferencia en `run_in_threadpool` en vez de volver
-    # el handler `def`: lo segundo obligaba a cambiar `await file.read()` y
-    # `await request.form()` por sus versiones sincrónicas en los tres
-    # handlers, y a perder el orden de dependencias que arriba garantiza que
-    # la sesión se compruebe antes de leer el cuerpo. Esto toca una línea por
-    # inferencia y deja todo lo demás igual. `FractureDetector.predict` lleva
-    # un candado, así que dos estudios simultáneos se infieren de a uno.
+    # La inferencia corre en otro hilo para no congelar el servidor mientras tanto.
     result = await run_in_threadpool(detector.predict, image)
-
-    annotated_pil = Image.fromarray(cv2.cvtColor(result.annotated_image, cv2.COLOR_BGR2RGB))
-    annotated_pil.save(str(UPLOADS_DIR / annotated_filename))
-
-    report_text = detector.generate_report_text(result)
-    urgency = calculate_urgency(result.max_detection_confidence)
+    _guardar_anotada(result, annotated_filename)
 
     analysis = crud.create_analysis(
         db=db,
         user_id=user.id,
         original_image_path=original_filename,
         annotated_image_path=annotated_filename,
-        report_text=report_text,
+        report_text=detector.generate_report_text(result),
         max_detection_confidence=result.max_detection_confidence,
         is_abnormal=result.is_abnormal,
         inference_time_ms=result.inference_time_ms,
         anatomical_region=region_key,
         model_version=result.model_version,
         routing_method=routing_method,
-        urgency=urgency,
+        urgency=calculate_urgency(result.max_detection_confidence),
     )
-
-    boxes_data = [
-        {"x1": b.x1, "y1": b.y1, "x2": b.x2, "y2": b.y2, "confidence": b.confidence}
-        for b in result.boxes
-    ]
-    if boxes_data:
-        crud.create_detection_boxes(db, analysis.id, boxes_data)
+    if result.boxes:
+        crud.create_detection_boxes(db, analysis.id, _cajas_para_guardar(result))
 
     return RedirectResponse(url=f"/analysis/{analysis.id}/results", status_code=303)
 
 
-# ─── Resultado guardado ──────────────────────────────────────────────────────
+# ─── Historial, imágenes y resultado ─────────────────────────────────────────
 
 @router.get("/history", response_class=HTMLResponse)
 async def history_page(
@@ -324,19 +267,14 @@ async def history_page(
     db: Session = Depends(get_db),
     user: User = Depends(require_user),
 ):
-    """Historial del usuario logueado, y sólo de él."""
     analyses = crud.get_analyses_by_user(db, user_id=user.id, limit=HISTORIAL_MAX_FILAS)
     return templates.TemplateResponse(
         request, "history.html",
         {
             **_base_context(request, user),
             "analyses": analyses,
-            # El total REAL de la cuenta, para que la pantalla no llame
-            # "Todos" a una ventana recortada. Ver HISTORIAL_MAX_FILAS.
             "total_registros": crud.count_analyses_by_user(db, user_id=user.id),
-            # Para marcar en la tabla los registros de modelos retirados.
             "default_region": DEFAULT_REGION,
-            # Para marcar «modelo anterior» y filtrar por el vigente.
             "vigentes": {a.id for a in analyses if es_modelo_vigente(a.model_version)},
         },
     )
@@ -348,18 +286,11 @@ async def serve_image(
     db: Session = Depends(get_db),
     user: User = Depends(require_user),
 ):
-    """Sirve una imagen sólo si pertenece a un análisis del usuario.
-
-    Antes `app/uploads` estaba montado como StaticFiles, así que las
-    radiografías de todos los pacientes eran descargables por URL sin ninguna
-    verificación.
-    """
+    """Sirve una radiografía sólo si pertenece a un análisis del usuario."""
     if not _SAFE_FILENAME_RE.match(archivo):
         raise HTTPException(status_code=400, detail="Nombre de archivo inválido.")
 
-    from app.database.models import Analysis
-
-    pertenece = (
+    es_del_usuario = (
         db.query(Analysis)
         .filter(
             Analysis.user_id == user.id,
@@ -368,7 +299,7 @@ async def serve_image(
         )
         .first()
     )
-    if pertenece is None:
+    if es_del_usuario is None:
         raise HTTPException(status_code=404, detail="Imagen no encontrada.")
 
     ruta = (UPLOADS_DIR / archivo).resolve()
@@ -395,8 +326,6 @@ async def view_analysis(
         raise HTTPException(status_code=404, detail="Análisis no encontrado.")
 
     boxes = crud.get_boxes_by_analysis(db, analysis.id)
-    significativas = [b for b in boxes if b.confidence >= ABNORMAL_THRESHOLD]
-    bajas = [b for b in boxes if b.confidence < ABNORMAL_THRESHOLD]
 
     return templates.TemplateResponse(
         request, "results.html",
@@ -411,26 +340,17 @@ async def view_analysis(
             "is_abnormal": analysis.is_abnormal,
             "inference_time": f"{analysis.inference_time_ms or 0:.0f}",
             "boxes": boxes,
-            "significant_boxes": significativas,
-            "low_confidence_boxes": bajas,
-            # Las mismas cajas, para el cliente. Ver _boxes_json.
+            "significant_boxes": [b for b in boxes if b.confidence >= ABNORMAL_THRESHOLD],
+            "low_confidence_boxes": [b for b in boxes if b.confidence < ABNORMAL_THRESHOLD],
             "boxes_json": _boxes_json(boxes),
             "urgency": urgency_detail(
                 analysis.max_detection_confidence or 0.0,
                 bool(analysis.is_abnormal),
             ),
-            "anatomical_region": MODEL_METADATA.get(
-                analysis.anatomical_region, {}
-            ).get("label", analysis.anatomical_region or "—"),
-            # Clave cruda de la región, además de la etiqueta legible: la
-            # plantilla la necesita para marcar los registros que quedaron
-            # fuera del dominio validado (modelos retirados o sin región).
+            "anatomical_region": _etiqueta_region(analysis.anatomical_region),
             "region_key": analysis.anatomical_region,
             "default_region": DEFAULT_REGION,
             "model_version": analysis.model_version,
-            # Muñeca, pero con un modelo que ya no está en uso (v1, v2, ...):
-            # sin prioridad de triage ni corte de aviso, y las métricas del
-            # alcance se atribuyen al modelo vigente, no a este resultado.
             "modelo_anterior": _modelo_anterior(analysis.anatomical_region, analysis.model_version),
             "feedback": crud.get_feedback_by_analysis(db, analysis.id),
             "email_habilitado": EMAIL_HABILITADO,
@@ -440,19 +360,10 @@ async def view_analysis(
     )
 
 
-# ─── PDF ─────────────────────────────────────────────────────────────────────
-
-# Color de las cajas de un análisis que NO es del modelo vigente, en el PDF:
-# el violeta 200 de KIBBO (--kb-violet-200, el --ov del quemado de la placa en
-# style.css). La anotada guardada las pinta en rojo/ámbar según el corte de su
-# época, y ese corte no es el del sistema de hoy.
-_CAJA_NEUTRA = "#CFC4F1"
-
+# ─── PDF y mail ──────────────────────────────────────────────────────────────
 
 def _anotada_neutra(original: Image.Image, cajas) -> Image.Image:
     """La placa original con las cajas guardadas, todas en el color neutro."""
-    from PIL import ImageDraw
-
     lienzo = original.convert("RGB")
     trazo = max(2, round(max(lienzo.size) / 500))
     dibujo = ImageDraw.Draw(lienzo)
@@ -461,31 +372,25 @@ def _anotada_neutra(original: Image.Image, cajas) -> Image.Image:
     return lienzo
 
 
-def _cargar_imagenes(analysis) -> tuple[Image.Image, Image.Image]:
-    original = Image.open(str(UPLOADS_DIR / analysis.original_image_path))
+def _imagen_anotada(analysis) -> Image.Image:
+    """La placa con las cajas. Si el modelo ya no es el vigente, las cajas van en color neutro."""
     if not es_modelo_vigente(analysis.model_version):
-        # Las cajas se siguen mostrando, pero sin el color «sobre el corte».
-        return original, _anotada_neutra(original, analysis.detection_boxes)
-    anotada = Image.open(str(UPLOADS_DIR / analysis.annotated_image_path))
-    return original, anotada
+        original = Image.open(str(UPLOADS_DIR / analysis.original_image_path))
+        return _anotada_neutra(original, analysis.detection_boxes)
+    return Image.open(str(UPLOADS_DIR / analysis.annotated_image_path))
 
 
 def _pdf_del_analisis(analysis, user: User) -> bytes:
-    """El informe PDF de un análisis: el mismo para descargar y para mandar por mail."""
+    """El informe PDF, el mismo para descargar y para mandar por mail."""
     from src.reports.generator import generate_pdf_report
 
-    original, anotada = _cargar_imagenes(analysis)
     return generate_pdf_report(
-        original_image=original,
-        annotated_image=anotada,
+        annotated_image=_imagen_anotada(analysis),
         report_text=_texto_del_informe(analysis),
         analysis_id=str(analysis.id),
         doctor_name=user.name,
-        # La región del ANÁLISIS, no la del modelo vivo: un informe generado
-        # con un modelo retirado no puede exhibir las métricas del actual.
         region=analysis.anatomical_region,
         created_at=analysis.created_at,
-        # Y su modelo: uno de muñeca hecho con un modelo anterior lo declara.
         model_version=analysis.model_version,
     )
 
@@ -500,10 +405,8 @@ async def download_pdf(
     if not analysis:
         raise HTTPException(status_code=404, detail="Análisis no encontrado.")
 
-    pdf_bytes = _pdf_del_analisis(analysis, user)
-
     return StreamingResponse(
-        BytesIO(pdf_bytes),
+        BytesIO(_pdf_del_analisis(analysis, user)),
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename=traumavision_informe_{analysis.id}.pdf"},
     )
@@ -527,8 +430,7 @@ async def send_email(
         return RedirectResponse(url=volver + "invalido", status_code=303)
     if not EMAIL_HABILITADO:
         return RedirectResponse(url=volver + "error", status_code=303)
-    permitido, _restantes = check_and_consume(f"email:{user.id}", EMAIL_POR_HORA)
-    if not permitido:
+    if not check_and_consume(f"email:{user.id}", EMAIL_POR_HORA):
         return RedirectResponse(url=volver + "limite", status_code=303)
 
     pdf = await run_in_threadpool(_pdf_del_analisis, analysis, user)
@@ -536,7 +438,7 @@ async def send_email(
     return RedirectResponse(url=volver + ("enviado" if enviado else "error"), status_code=303)
 
 
-# ─── Estudios multi-imagen ───────────────────────────────────────────────────
+# ─── Estudios de varias imágenes ─────────────────────────────────────────────
 
 @router.post("/upload-study")
 async def analyze_study(
@@ -545,16 +447,12 @@ async def analyze_study(
     user: User = Depends(require_user),
     _: None = Depends(verify_csrf),
 ):
-    """Analiza un ZIP con varios DICOM y devuelve el resumen del estudio."""
-    # Sesión antes que cuerpo: ver _archivo_del_formulario.
+    """Analiza un ZIP con varios DICOM y redirige al resultado del estudio."""
     file, region = await _archivo_del_formulario(request)
     if file is None:
         return _upload_error(request, user, "No se recibió ningún archivo. Subí un ZIP con los DICOM del estudio.")
 
-    filename_lower = (file.filename or "").lower()
-    is_zip = filename_lower.endswith(".zip") or file.content_type in (
-        "application/zip", "application/x-zip-compressed",
-    )
+    is_zip = (file.filename or "").lower().endswith(".zip") or file.content_type in _TIPOS_ZIP
     if not is_zip:
         return _upload_error(request, user, "Para estudios multi-imagen, subí un archivo ZIP con los DICOM.")
 
@@ -562,8 +460,6 @@ async def analyze_study(
     if len(contents) > MAX_ZIP_SIZE_MB * 1024 * 1024:
         return _upload_error(request, user, f"El archivo ZIP excede el límite de {MAX_ZIP_SIZE_MB} MB.")
 
-    # La región también aplica al estudio. Antes se ignoraba y siempre se usaba
-    # el modelo por defecto, sin importar lo que eligiera el médico.
     try:
         region_key, routing_method = route_image(region)
     except HTTPException as exc:
@@ -578,8 +474,7 @@ async def analyze_study(
         return _upload_error(request, user, f"No se pudo leer el ZIP: {exc}")
 
     try:
-        from src.detection.predict import FractureDetector
-        detector = FractureDetector.get(region_key)
+        detector = _cargar_detector(region_key)
     except (FileNotFoundError, ValueError) as exc:
         return _upload_error(request, user, f"El modelo de IA no está disponible: {exc}", status_code=503)
 
@@ -597,70 +492,62 @@ async def analyze_study(
     )
 
     con_hallazgos = 0
-
     for idx, entry in enumerate(dicom_entries):
-        # Hasta MAX_ZIP_ENTRIES inferencias en un request: cada una fuera del
-        # bucle, o la app quedaba muerta minutos enteros. Ver analyze_image.
         result = await run_in_threadpool(detector.predict, entry.image)
 
         token = f"{study_token}{idx:04d}"
         orig_name = f"{token}_original.png"
         annot_name = f"{token}_annotated.png"
-
         entry.image.convert("RGB").save(str(UPLOADS_DIR / orig_name))
-        Image.fromarray(cv2.cvtColor(result.annotated_image, cv2.COLOR_BGR2RGB)).save(
-            str(UPLOADS_DIR / annot_name)
-        )
+        _guardar_anotada(result, annot_name)
 
-        urgency = calculate_urgency(result.max_detection_confidence)
         if result.is_abnormal:
             con_hallazgos += 1
+        veredicto = "Hallazgos detectados" if result.is_abnormal else "Sin hallazgos sobre el umbral"
 
-        # Se guardan región, modelo, routing y urgencia también para el estudio:
-        # antes esta rama perdía toda la trazabilidad del modelo usado.
         analysis = crud.create_analysis(
             db=db,
             user_id=user.id,
             study_id=study.id,
             original_image_path=orig_name,
             annotated_image_path=annot_name,
-            report_text=(
-                f"Imagen {idx + 1} — {entry.filename} — "
-                f"{'Hallazgos detectados' if result.is_abnormal else 'Sin hallazgos sobre el umbral'}"
-            ),
+            report_text=f"Imagen {idx + 1} — {entry.filename} — {veredicto}",
             max_detection_confidence=result.max_detection_confidence,
             is_abnormal=result.is_abnormal,
             inference_time_ms=result.inference_time_ms,
             anatomical_region=region_key,
             model_version=result.model_version,
             routing_method=routing_method,
-            urgency=urgency,
+            urgency=calculate_urgency(result.max_detection_confidence),
         )
         if result.boxes:
-            crud.create_detection_boxes(
-                db, analysis.id,
-                [{"x1": b.x1, "y1": b.y1, "x2": b.x2, "y2": b.y2, "confidence": b.confidence}
-                 for b in result.boxes],
-            )
-
-        # Acá se armaba una segunda copia de cada fila para renderizarla en el
-        # POST. Con el PRG la pantalla la arma `view_study` desde la base, así
-        # que esa copia era trabajo por cada imagen del ZIP para tirarlo.
+            crud.create_detection_boxes(db, analysis.id, _cajas_para_guardar(result))
 
     study.images_with_findings = con_hallazgos
     db.commit()
 
-    # POST-Redirect-GET. Antes esta rama renderizaba la plantilla sobre el
-    # propio POST, así que la barra del navegador quedaba apuntando a
-    # /analysis/upload-study con el cuerpo pegado: F5 o el botón atrás
-    # reenviaban el formulario y el ZIP se procesaba de nuevo entero. El
-    # médico terminaba con dos estudios idénticos y ninguna forma de saber
-    # cuál era el bueno.
-    #
-    # `view_study` ya sabe rearmar exactamente esta pantalla desde la base
-    # —es la que se usa al abrir un estudio desde el historial—, así que el
-    # alta no necesita renderizar nada: sólo mandar ahí.
+    # Redirigir (y no mostrar la página acá) evita que F5 reenvíe el ZIP.
     return RedirectResponse(url=f"/analysis/study/{study.id}", status_code=303)
+
+
+def _fila_de_imagen(numero: int, a: Analysis) -> dict:
+    """Los datos de una imagen del estudio para la plantilla (`numero` empieza en 1)."""
+    cajas = sorted(a.detection_boxes, key=lambda b: b.confidence, reverse=True)
+    return {
+        "index": numero,
+        "analysis_id": a.id,
+        "source_filename": a.original_image_path,
+        "original_image": a.original_image_path,
+        "annotated_image": a.annotated_image_path,
+        "max_detection_confidence": a.max_detection_confidence or 0.0,
+        "is_abnormal": a.is_abnormal,
+        "significant_count": a.findings_above_abnormal,
+        "low_confidence_count": len(a.detection_boxes) - a.findings_above_abnormal,
+        "inference_time_ms": a.inference_time_ms or 0.0,
+        "urgency": urgency_detail(a.max_detection_confidence or 0.0, bool(a.is_abnormal)),
+        "boxes": cajas,
+        "boxes_json": _boxes_json(cajas),
+    }
 
 
 @router.get("/study/{study_id}", response_class=HTMLResponse)
@@ -674,40 +561,20 @@ async def view_study(
     if not study:
         raise HTTPException(status_code=404, detail="Estudio no encontrado.")
 
-    analyses = crud.get_analyses_by_study(db, study_id)
+    resultados = [
+        _fila_de_imagen(i + 1, a)
+        for i, a in enumerate(crud.get_analyses_by_study(db, study_id))
+    ]
 
-    def _fila(i, a):
-        cajas = sorted(a.detection_boxes, key=lambda b: b.confidence, reverse=True)
-        return {
-            "index": i + 1,
-            "analysis_id": a.id,
-            "source_filename": a.original_image_path,
-            "original_image": a.original_image_path,
-            "annotated_image": a.annotated_image_path,
-            "max_detection_confidence": a.max_detection_confidence or 0.0,
-            "is_abnormal": a.is_abnormal,
-            "significant_count": a.findings_above_abnormal,
-            "low_confidence_count": len(a.detection_boxes) - a.findings_above_abnormal,
-            "inference_time_ms": a.inference_time_ms or 0.0,
-            "urgency": urgency_detail(a.max_detection_confidence or 0.0, bool(a.is_abnormal)),
-            # Las cajas ya persistidas de cada imagen. Ver _boxes_json.
-            "boxes": cajas,
-            "boxes_json": _boxes_json(cajas),
-        }
-
-    resultados = [_fila(i, a) for i, a in enumerate(analyses)]
-
-    # Fuera del dominio validado la plantilla neutraliza TODOS los veredictos
-    # (la urgencia la calculó un modelo retirado y no ordena nada), así que no
-    # hay ninguna imagen que priorizar: se abre en la primera.
+    # Fuera del dominio validado no hay urgencia que ordene: el visor abre en la primera imagen.
     fuera_de_dominio = (
         study.anatomical_region != DEFAULT_REGION
         or _modelo_anterior(study.anatomical_region, study.model_version)
     )
-    inicial = (
-        resultados[0]["index"] if (fuera_de_dominio and resultados)
-        else imagen_mas_urgente(resultados)
-    )
+    if fuera_de_dominio and resultados:
+        inicial = resultados[0]["index"]
+    else:
+        inicial = imagen_mas_urgente(resultados)
     imagen_inicial = next((r for r in resultados if r["index"] == inicial), None)
 
     return templates.TemplateResponse(
@@ -715,17 +582,13 @@ async def view_study(
         {
             **_base_context(request, user),
             "study_id": study.id,
-            # En qué imagen abre el visor y cuál es el veredicto del ESTUDIO
-            # (el de su imagen más urgente). Los dos son decisiones clínicas:
-            # se calculan en el servidor, no en la plantilla.
             "initial_index": inicial,
+            # El veredicto del estudio es el de la imagen en la que abre el visor.
             "urgencia_estudio": imagen_inicial["urgency"] if imagen_inicial else None,
             "original_zip": study.original_filename,
             "total_images": study.total_images,
             "images_with_findings": study.images_with_findings,
-            "anatomical_region": MODEL_METADATA.get(
-                study.anatomical_region, {}
-            ).get("label", study.anatomical_region or "—"),
+            "anatomical_region": _etiqueta_region(study.anatomical_region),
             "region_key": study.anatomical_region,
             "default_region": DEFAULT_REGION,
             "model_version": study.model_version,
@@ -733,4 +596,3 @@ async def view_study(
             "results": resultados,
         },
     )
-

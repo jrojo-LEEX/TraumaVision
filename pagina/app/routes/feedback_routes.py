@@ -1,10 +1,7 @@
 """
-feedback_routes.py — Opinión del médico sobre un análisis.
+feedback_routes.py — Opinión del médico sobre un análisis propio.
 
-El feedback mide la tasa de acuerdo médico-IA (métrica de la tesis) y es la
-base para un futuro reentrenamiento.
-
-Sólo se acepta feedback sobre análisis del propio usuario.
+  POST /feedback/submit   guarda si el médico coincide con el sistema
 """
 
 from fastapi import APIRouter, Depends, Form
@@ -30,16 +27,13 @@ async def submit_feedback(
     user: User = Depends(require_user),
     _: None = Depends(verify_csrf),
 ):
-    """Registra el feedback y vuelve a la pantalla del análisis."""
-    # El filtro por usuario impide dejar feedback sobre estudios ajenos.
-    analysis = crud.get_analysis_for_user(db, analysis_id, user.id)
-    if not analysis:
+    # Filtrar por usuario impide opinar sobre estudios ajenos.
+    if not crud.get_analysis_for_user(db, analysis_id, user.id):
         return RedirectResponse(url="/analysis/history?error=notfound", status_code=303)
 
+    volver = f"/analysis/{analysis_id}/results?feedback="
     if crud.get_feedback_by_analysis(db, analysis_id) is not None:
-        return RedirectResponse(
-            url=f"/analysis/{analysis_id}/results?feedback=duplicado", status_code=303
-        )
+        return RedirectResponse(url=volver + "duplicado", status_code=303)
 
     crud.create_feedback(
         db=db,
@@ -48,7 +42,4 @@ async def submit_feedback(
         observations=observations.strip()[:2000],
         correct_diagnosis=correct_diagnosis.strip()[:500],
     )
-
-    return RedirectResponse(
-        url=f"/analysis/{analysis_id}/results?feedback=ok", status_code=303
-    )
+    return RedirectResponse(url=volver + "ok", status_code=303)

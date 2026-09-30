@@ -4,7 +4,7 @@
 {% block title %}Cargar estudio · {{ app_name }}{% endblock %}
 
 {% block head %}
-<script defer src="/static/js/upload.js?v=5"></script>
+<script defer src="/static/js/upload.js?v=6"></script>
 {% endblock %}
 
 {% block content %}
@@ -30,7 +30,6 @@
   </button>
 </div>
 
-{# ══════ Imagen individual ══════ #}
 <div data-panel-tab="single">
   <form action="/analysis/upload" method="post" enctype="multipart/form-data" id="upload-form-single">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -64,9 +63,6 @@
           <span class="region-card-icon">{{ m.icon('bone') }}</span>
           <span class="region-card-body">
             <span class="region-card-label">{{ meta.label }}</span>
-            {# Arriba, el badge LLANO: si el modelo está probado o no. El
-               número exacto (mAP50, recall, precisión) no se borra —vive un
-               clic abajo, en «¿De dónde salen estos números?». #}
             <span class="region-card-badges">
               {% if meta.mAP50 is none %}
               <span class="badge badge-caution">Entrenamiento pendiente</span>
@@ -82,11 +78,6 @@
         {% endfor %}
       </div>
 
-      {# LA PROCEDENCIA, PLEGADA. Estaba suelta debajo de cada tarjeta y era
-         ruido en la pantalla de carga; borrarla no era la solución, porque
-         es material de defensa. Baja un nivel de jerarquía y se queda
-         entera. Ningún número está escrito a mano: todos salen de
-         MODEL_METADATA. #}
       <details class="quiet">
         <summary>{{ m.icon('chevron', 'chev') }}
           <span>¿De dónde salen estos números?</span>
@@ -127,7 +118,6 @@
   </form>
 </div>
 
-{# ══════ Estudio ZIP ══════ #}
 <div data-panel-tab="study" hidden>
   <form action="/analysis/upload-study" method="post" enctype="multipart/form-data" id="upload-form-study">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -169,11 +159,6 @@
   </ul>
 </div>
 
-{# Overlay de progreso.
-     La placa muestra la imagen que el usuario acaba de entregar, con la banda
-     de lectura recorriéndola. No hay porcentaje ni barra que se llene: el
-     backend no reporta progreso y fingirlo sería inventar estado del sistema.
-     Lo único cuantitativo acá es el cronómetro, y es real. #}
 <div id="progress-overlay" class="progress-overlay" role="status" aria-live="polite">
   <div class="progress-box">
     <div class="scanplate" data-scanplate aria-hidden="true">
@@ -189,11 +174,6 @@
     <p class="progress-detail" id="progress-detail">
       El modelo tarda unos segundos. No cierres ni recargues esta página.
     </p>
-    {# aria-live="off" a propósito: este párrafo vive dentro de una región
-       role="status" y el cronómetro cambia una vez por segundo. Sin esto, un
-       lector de pantalla anunciaría el número cada segundo durante todo el
-       análisis. El aviso ("Analizando la radiografía…") se anuncia una vez;
-       el cronómetro queda para leerlo cuando se quiera. #}
     <p class="progress-elapsed" aria-live="off">
       <span class="progress-state">En proceso</span> ·
       <span class="num" id="progress-seconds">0</span> s transcurridos
