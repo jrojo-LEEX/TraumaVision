@@ -49,7 +49,7 @@
   {% if demo_mode and demo_users %}
   <details class="demo-panel">
     <summary>{{ m.icon('chevron', 'chev') }} Cuentas de demostración</summary>
-    <p class="demo-note">Cuentas de prueba para la demostración. La cuenta de administración no se publica acá.</p>
+    <p class="demo-note">Cuentas de prueba para la demostración, incluida la de administración. Sólo se muestran en modo demo.</p>
     <div class="demo-list">
       {% for u in demo_users %}
       <button type="button" class="demo-row"

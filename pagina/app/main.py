@@ -22,18 +22,25 @@ from app.dependencies.auth import get_current_user
 from app.dependencies.csrf import get_csrf_token
 from app.plantillas import crear_templates
 from config.settings import (
+    ABNORMAL_THRESHOLD,
     APP_DESCRIPTION,
     APP_NAME,
     APP_VERSION,
+    APPLY_CLAHE_AT_INFERENCE,
+    CLAHE_CLIP_LIMIT,
+    CLAHE_TILE_SIZE,
+    CONFIDENCE_THRESHOLD,
     CORS_ORIGINS,
     DEFAULT_REGION,
     DEMO_MODE,
     LEGAL_DISCLAIMER,
     MODEL_METADATA,
+    MODELO_VIGENTE,
     SECRET_KEY,
     SESSION_COOKIE_NAME,
     SESSION_HTTPS_ONLY,
     SESSION_MAX_AGE_SECONDS,
+    URGENCY_HIGH_THRESHOLD,
     YOLO_MODELS,
 )
 
@@ -235,6 +242,16 @@ async def aviso_legal(request: Request):
             "current_user": _usuario_de_la_sesion(request),
             "csrf_token": get_csrf_token(request),
             "meta": MODEL_METADATA.get(DEFAULT_REGION),
+            "modelo": MODELO_VIGENTE,
+            "umbrales": {
+                "caja": CONFIDENCE_THRESHOLD,
+                "hallazgo": ABNORMAL_THRESHOLD,
+                "prioritario": URGENCY_HIGH_THRESHOLD,
+            },
+            "clahe": (
+                {"clip": CLAHE_CLIP_LIMIT, "grilla": CLAHE_TILE_SIZE}
+                if APPLY_CLAHE_AT_INFERENCE else None
+            ),
         },
     )
 

@@ -236,6 +236,12 @@ def domain_disclaimer(region=REGION_NO_INDICADA, model_version=REGION_NO_INDICAD
             "leerse como probabilidad de fractura."
         )
 
+    validacion = (
+        "Validación retrospectiva: interna, separada por paciente, y externa "
+        "(PediURF, recortes de muñeca). Sin estudio prospectivo."
+        if meta.get("test_externo")
+        else "Validación interna, separada por paciente: sin estudio prospectivo."
+    )
     return (
         "ALCANCE Y LIMITACIONES: el modelo está validado ÚNICAMENTE sobre "
         f"{meta['label']}, entrenado y evaluado sobre {meta['description']}. "
@@ -246,6 +252,5 @@ def domain_disclaimer(region=REGION_NO_INDICADA, model_version=REGION_NO_INDICAD
         "que UN INFORME SIN HALLAZGOS NO DESCARTA FRACTURA. "
         "La confianza que muestra el sistema es el score del detector y no debe "
         "leerse como probabilidad de fractura. "
-        "Validación interna, separada por paciente: sin estudio prospectivo ni "
-        "multicéntrico."
+        + validacion
     )

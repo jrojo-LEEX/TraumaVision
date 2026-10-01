@@ -1,8 +1,8 @@
 """
 demo_seed.py — Los 10 usuarios de demostración.
 
-Se crean al arrancar en modo demo. El login muestra sus credenciales, salvo
-la de la cuenta admin, que no se publica.
+Se crean al arrancar en modo demo. El login muestra las credenciales de
+todos, incluida la cuenta admin (sólo en modo demo).
 """
 
 from sqlalchemy.orm import Session
@@ -34,5 +34,5 @@ def seed_demo_users(db: Session) -> list[User]:
 
 
 def demo_credentials() -> list[dict]:
-    """Las cuentas sin privilegio de admin, para listarlas en el login."""
-    return [dict(u) for u in DEMO_USERS if not u["is_admin"]]
+    """Todas las cuentas demo, admin incluida, para listarlas en el login."""
+    return [dict(u) for u in DEMO_USERS]

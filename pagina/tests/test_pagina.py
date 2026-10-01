@@ -3,9 +3,10 @@ test_pagina.py — Lo esencial de la página, en un solo archivo.
 
 1-2. Los números del modelo que muestra la página salen de los JSON que
      escriben modelo/test_interno.py y modelo/test_externo.py.
-3-4. Login y rutas protegidas.
+3-4. Login (en modo demo, con todas las cuentas) y rutas protegidas.
 5-7. Subir una radiografía, aislamiento entre médicos y PDF.
 8-9. Métricas: sin margen de error y sólo con el modelo vigente.
+     La página de alcance muestra los números de MODEL_METADATA.
 10.  Los tests no escriben en app/uploads real.
 """
 
@@ -123,6 +124,25 @@ def test_login_correcto_e_incorrecto(client, users):
     assert r.headers["location"] == "/analysis/upload"
 
 
+def test_el_panel_demo_lista_la_cuenta_admin_solo_en_modo_demo(client, monkeypatch):
+    from app.database.demo_seed import DEMO_USERS
+    from app.routes import auth_routes
+
+    admin = next(u for u in DEMO_USERS if u["is_admin"])
+
+    monkeypatch.setattr(auth_routes, "DEMO_MODE", True)
+    html = client.get("/login").text
+    assert "Cuentas de demostración" in html
+    assert all(u["email"] in html for u in DEMO_USERS)
+    assert '<span class="nav-user-tag">admin</span>' in html
+    assert html.count('class="demo-row"') == len(DEMO_USERS)
+
+    monkeypatch.setattr(auth_routes, "DEMO_MODE", False)
+    html = client.get("/login").text
+    assert "Cuentas de demostración" not in html
+    assert admin["email"] not in html and admin["password"] not in html
+
+
 def test_sin_sesion_las_pantallas_redirigen_al_login(client):
     for ruta in ("/", "/analysis/upload", "/analysis/history", "/dashboard/", "/dashboard/api/stats"):
         r = client.get(ruta)
@@ -198,6 +218,34 @@ def test_un_analisis_de_un_modelo_anterior_no_cuenta_ni_muestra_su_informe(
     html = auth_client.get(f"/analysis/{viejo.id}/results").text
     assert "Platt" not in html and "Probabilidad estimada" not in html
     assert "lo generó un modelo anterior y no se muestra" in html
+
+
+def test_la_pagina_de_alcance_muestra_los_numeros_del_modelo_vigente(client):
+    from config.settings import (
+        ABNORMAL_THRESHOLD, CONFIDENCE_THRESHOLD, DEFAULT_REGION, MODEL_METADATA,
+        URGENCY_HIGH_THRESHOLD,
+    )
+
+    meta = MODEL_METADATA[DEFAULT_REGION]
+    ext = meta["test_externo"]
+    coma = lambda x, d: (f"%.{d}f" % x).replace(".", ",")  # noqa: E731
+    pct = lambda x: coma(x * 100, 1) + "&nbsp;%"  # noqa: E731
+
+    r = client.get("/aviso-legal")
+    assert r.status_code == 200
+    html = r.text
+    esperados = [
+        pct(meta["sensibilidad"]), pct(meta["especificidad"]), coma(meta["auc_roc"], 3),
+        coma(meta["mAP50"], 3), coma(meta["recall"], 3),
+        pct(ext["por_caso"]["sensibilidad"]), pct(ext["por_caso"]["especificidad"]),
+        pct(ext["por_imagen"]["sensibilidad"]), pct(ext["por_imagen"]["especificidad"]),
+        coma(ABNORMAL_THRESHOLD, 2), coma(CONFIDENCE_THRESHOLD, 2), coma(URGENCY_HIGH_THRESHOLD, 2),
+        f"{meta['test_n_pacientes']} pacientes", meta["metrics_date"],
+    ]
+    for texto in esperados:
+        assert texto in html, texto
+    for viejo in ("multicéntric", "calibrad", "v2", "0,25", "0,50", "IC 95"):
+        assert viejo not in html, viejo
 
 
 # ─── 10. Carpeta de uploads ──────────────────────────────────────────────────

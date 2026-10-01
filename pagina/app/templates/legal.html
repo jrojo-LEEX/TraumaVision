@@ -6,10 +6,14 @@
 {% block main_class %}container-narrow{% endblock %}
 
 {% block content %}
+{% macro coma(v, dec=2) %}{{ (("%." ~ dec ~ "f")|format(v))|replace('.', ',') }}{% endmacro %}
+{% macro pct(v) %}{{ ("%.1f"|format(v * 100))|replace('.', ',') }}&nbsp;%{% endmacro %}
+{% macro miles(n) %}{{ ("{:,}".format(n))|replace(',', '.') }}{% endmacro %}
+
 <div class="page-header">
   <div>
     <h1>Alcance y limitaciones</h1>
-    <p class="page-header-sub">Qué hace este sistema, qué no hace, y con qué margen de error</p>
+    <p class="page-header-sub">Qué hace este sistema, qué no hace y cómo se midió su rendimiento</p>
   </div>
 </div>
 
@@ -20,10 +24,22 @@
 <div class="card">
   <p class="card-title">Qué hace</p>
   <p>
-    {{ app_name }} es un <strong>sistema de soporte a la decisión clínica</strong>
-    desarrollado como proyecto integrador de Ingeniería Biomédica. Señala regiones de una
-    radiografía de muñeca pediátrica donde un modelo de detección encontró patrones
-    compatibles con fractura.
+    {{ app_name }} es un <strong>prototipo académico de soporte a la decisión clínica</strong>,
+    desarrollado como Proyecto Integrador de Ingeniería Biomédica (UNC). Usa un único modelo
+    de detección, <code>{{ modelo }}</code> (YOLOv8m, una sola clase: «fractura»), que señala
+    en radiografías de muñeca pediátrica las zonas con patrones compatibles con fractura.
+  </p>
+  <p style="margin-top:var(--s-3);">
+    Cada proyección se analiza por separado: el modelo no combina las vistas entre sí. En un
+    estudio de varias imágenes, la urgencia del estudio es la de su proyección más urgente.
+    {% if clahe %}Antes del análisis, cada imagen se preprocesa con CLAHE (límite
+    {{ coma(clahe.clip, 1) }}, grilla {{ clahe.grilla }}×{{ clahe.grilla }}), igual que en el
+    entrenamiento.{% endif %}
+  </p>
+  <p style="margin-top:var(--s-3);">
+    El resultado se puede descargar como informe PDF y, si el servidor tiene configurado el
+    correo, enviar por mail. No hay una API pública: el sistema se usa sólo desde esta
+    interfaz, con sesión iniciada.
   </p>
   <p style="margin-top:var(--s-3);">
     <strong>No emite diagnósticos.</strong> Todo resultado debe ser interpretado, validado
@@ -36,47 +52,63 @@
   <ul class="legal-list">
     <li>
       <strong>Dominio acotado.</strong>
-      El modelo se entrenó con GRAZPEDWRI-DX: radiografías de <em>muñeca</em> de pacientes
-      de 0 a 17 años. Fuera de esa región y ese rango etario su comportamiento no está
-      validado. Los análisis guardados que se hicieron con modelos anteriores (de otras
-      regiones o versiones previas del de muñeca) se muestran marcados como «modelo
-      anterior», sin prioridad clínica, y no entran en las métricas.
+      El modelo se entrenó con GRAZPEDWRI-DX, partido por paciente: radiografías de
+      <em>muñeca</em> de pacientes de 0 a 17 años. Fuera de esa región y ese rango etario su
+      comportamiento no está validado. Si en la base quedan análisis hechos con un modelo
+      anterior, se muestran marcados como «modelo anterior», sin prioridad clínica, y no
+      entran en las métricas.
     </li>
 
     <li>
-      <strong>La seguridad del detector no es una probabilidad.</strong>
-      El número que acompaña a cada zona marcada es el <em>score</em> del detector, su
-      salida interna post-NMS: sirve para ordenar las detecciones, pero no es una
-      probabilidad de fractura y no debe leerse como tal.
+      <strong>El puntaje del detector no es una probabilidad.</strong>
+      El número que acompaña a cada zona marcada (la «seguridad» del detector) es su score
+      crudo post-NMS: sirve para ordenar las detecciones, pero no es una probabilidad de
+      fractura. El modelo no se calibró, así que ese número no debe leerse como tal.
     </li>
 
     <li>
-      <strong>Los cortes de urgencia son operativos.</strong>
-      El corte de prioridad alta y el de revisión se aplican sobre el score del detector. Ordenan la revisión, no reemplazan el
-      criterio clínico.
+      <strong>Los cortes son operativos.</strong>
+      Con un score de {{ coma(umbrales.hallazgo) }} o más la imagen se clasifica con
+      hallazgos («Revisar»); ese corte se eligió sobre la partición de validación. Con
+      {{ coma(umbrales.prioritario) }} o más pasa a «Prioritario». Entre
+      {{ coma(umbrales.caja) }} y {{ coma(umbrales.hallazgo) }} la zona se dibuja con una caja
+      punteada («Límite»), sin clasificar la imagen como anormal. Los cortes ordenan la
+      revisión; no reemplazan el criterio clínico.
     </li>
 
     <li>
-      <strong>Un negativo no descarta patología.</strong>
+      <strong>Un negativo no descarta fractura.</strong>
       {% if meta and meta.recall is not none %}
-      El recall medido sobre el conjunto de prueba{% if meta.test_n %} ({{ meta.test_n }}
-      imágenes){% endif %} es {{ ("%.3f"|format(meta.recall))|replace('.', ',') }}:
-      aproximadamente {{ ((1 - meta.recall) * 100)|round|int }} de cada 100
-      fracturas anotadas no fueron detectadas.
+      En el test interno, con el corte de {{ coma(umbrales.hallazgo) }}, no se clasificaron con hallazgos
+      {{ miles(meta.test_FN) }} de las {{ miles(meta.test_n_positivos) }} radiografías con
+      fractura (sensibilidad por imagen {{ pct(meta.sensibilidad) }}). Por caja, el recall de
+      detección fue {{ coma(meta.recall, 3) }}: alrededor de
+      {{ ((1 - meta.recall) * 100)|round|int }} de cada 100 fracturas anotadas no se detectaron.
       {% else %}
-      El modelo en producción no tiene métricas publicadas en este sistema, así que
-      esta página no informa ninguna tasa de detección.
+      El modelo en uso no tiene métricas publicadas en este sistema, así que esta página no
+      informa ninguna tasa de detección.
       {% endif %}
-      Por eso un resultado sin hallazgos nunca se
-      presenta como un resultado normal confirmado.
+      Por eso un resultado sin hallazgos nunca se presenta como un resultado normal confirmado.
     </li>
 
+    {% if meta and meta.recall is not none %}
+    {% set ext = meta.test_externo %}
     <li>
-      <strong>Validación interna.</strong>
-      Las métricas provienen de la partición de prueba del mismo dataset de entrenamiento,
-      separada por paciente{% if meta and meta.metrics_date %}, medida el
-      {{ meta.metrics_date }}{% endif %}. No hay validación prospectiva ni multicéntrica.
+      <strong>Validación retrospectiva, sin estudio prospectivo.</strong>
+      Test interno: partición de prueba de GRAZPEDWRI-DX separada por paciente
+      ({{ miles(meta.test_n) }} imágenes de {{ miles(meta.test_n_pacientes) }} pacientes),
+      medida el <span style="white-space:nowrap;">{{ meta.metrics_date }}</span>. Por imagen: sensibilidad {{ pct(meta.sensibilidad) }},
+      especificidad {{ pct(meta.especificidad) }} y AUC {{ coma(meta.auc_roc, 3) }}. Por caja:
+      mAP50 {{ coma(meta.mAP50, 3) }} y recall {{ coma(meta.recall, 3) }}.
+      {% if ext %}
+      Test externo: PediURF, {{ miles(ext.n_casos) }} casos ({{ miles(ext.n_imagenes) }}
+      imágenes) recortados a la muñeca, medido el <span style="white-space:nowrap;">{{ ext.fecha }}</span>. Por caso: sensibilidad
+      {{ pct(ext.por_caso.sensibilidad) }} y especificidad {{ pct(ext.por_caso.especificidad) }};
+      por imagen: {{ pct(ext.por_imagen.sensibilidad) }} y {{ pct(ext.por_imagen.especificidad) }}.
+      {% endif %}
+      Son estimaciones puntuales, sin intervalos de confianza.
     </li>
+    {% endif %}
 
     <li>
       <strong>No es un producto médico registrado.</strong>
@@ -88,9 +120,12 @@
 <div class="card">
   <p class="card-title">Datos de los estudios</p>
   <p>
-    Las imágenes DICOM se convierten descartando los metadatos del paciente, y los nombres
-    de archivo se enmascaran antes de guardarse. Cada usuario accede sólo a sus propios
-    estudios.
+    Las imágenes DICOM se convierten a PNG sin sus metadatos (los datos del paciente no se
+    usan ni se guardan), y cada
+    imagen se guarda con un nombre aleatorio. En los estudios ZIP, los nombres de las imágenes
+    se guardan con los números largos tapados; el nombre del ZIP se guarda tal como se subió.
+    Cada usuario accede sólo a sus propios estudios. El informe PDF incluye las imágenes: si
+    se manda por mail, sale del sistema.
   </p>
   <p style="margin-top:var(--s-3);">
     Aun así, esta es una <strong>instalación de demostración</strong>: no debe utilizarse
