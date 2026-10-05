@@ -228,7 +228,8 @@ def test_la_pagina_de_alcance_muestra_los_numeros_del_modelo_vigente(client):
 
     meta = MODEL_METADATA[DEFAULT_REGION]
     ext = meta["test_externo"]
-    coma = lambda x, d: (f"%.{d}f" % x).replace(".", ",")  # noqa: E731
+    from app.plantillas import _decimal
+    coma = _decimal
     pct = lambda x: coma(x * 100, 1) + "&nbsp;%"  # noqa: E731
 
     r = client.get("/aviso-legal")

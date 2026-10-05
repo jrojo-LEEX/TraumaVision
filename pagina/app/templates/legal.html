@@ -6,7 +6,7 @@
 {% block main_class %}container-narrow{% endblock %}
 
 {% block content %}
-{% macro coma(v, dec=2) %}{{ (("%." ~ dec ~ "f")|format(v))|replace('.', ',') }}{% endmacro %}
+{% macro coma(v, dec=2) %}{{ v|decimal(dec) }}{% endmacro %}
 {% macro pct(v) %}{{ ("%.1f"|format(v * 100))|replace('.', ',') }}&nbsp;%{% endmacro %}
 {% macro miles(n) %}{{ ("{:,}".format(n))|replace(',', '.') }}{% endmacro %}
 
@@ -53,7 +53,7 @@
     <li>
       <strong>Dominio acotado.</strong>
       El modelo se entrenó con GRAZPEDWRI-DX, partido por paciente: radiografías de
-      <em>muñeca</em> de pacientes de 0 a 17 años. Fuera de esa región y ese rango etario su
+      <em>muñeca</em> de pacientes de 0 a 19 años. Fuera de esa región y ese rango etario su
       comportamiento no está validado. Si en la base quedan análisis hechos con un modelo
       anterior, se muestran marcados como «modelo anterior», sin prioridad clínica, y no
       entran en las métricas.

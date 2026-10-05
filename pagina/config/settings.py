@@ -131,7 +131,7 @@ def texto_del_informe(model_version, report_text) -> str:
 # tests/test_pagina.py comprueba que coincidan.
 MODEL_METADATA: dict = {
     "muneca_pediatrica": {
-        "label": "Muñeca — Pediátrica (0–17 años)",
+        "label": "Muñeca — Pediátrica (0–19 años)",
         "description": "GRAZPEDWRI-DX · 20.327 imágenes · YOLOv8m · 60 épocas",
         "icon": "🦴",
         "available": True,

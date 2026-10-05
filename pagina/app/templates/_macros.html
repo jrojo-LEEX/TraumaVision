@@ -303,7 +303,7 @@
 <details class="scope">
   <summary>{{ icon('chevron', 'chev') }}{{ icon('info', 'scope-i') }}
     <span>{{ titulo }}</span>
-    <span class="fold-m">Recall <span class="num">{{ ("%.3f"|format(meta.recall))|replace('.', ',') }}</span></span>
+    <span class="fold-m">Recall <span class="num">{{ meta.recall|decimal(3) }}</span></span>
   </summary>
   <div class="scope-body">
     <dl class="scope-list">

@@ -95,7 +95,7 @@
             {% if meta.mAP50 is not none %}
             <dl class="kv">
               <dt>mAP50</dt><dd>{{ ("%.3f"|format(meta.mAP50))|replace('.', ',') }}</dd>
-              <dt>Recall</dt><dd>{{ ("%.3f"|format(meta.recall))|replace('.', ',') }}</dd>
+              <dt>Recall</dt><dd>{{ meta.recall|decimal(3) }}</dd>
               <dt>Precisión</dt><dd>{{ ("%.3f"|format(meta.precision))|replace('.', ',') }}</dd>
             </dl>
             <p class="metrics-provenance">
