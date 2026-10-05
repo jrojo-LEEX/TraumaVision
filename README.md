@@ -45,3 +45,7 @@ venv\Scripts\python.exe modelo\test_interno.py
 | Test externo, PediURF (por caso) | 98,6 % | 83,2 % |
 
 Los datos, los pesos del modelo, la base de datos y los estudios subidos no están en git.
+
+## Licencia
+
+El código se distribuye bajo la licencia GNU Affero General Public License v3.0 (AGPL-3.0), la misma de la biblioteca Ultralytics que usa el detector. Ver el archivo `LICENSE`.
