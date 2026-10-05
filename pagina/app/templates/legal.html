@@ -78,12 +78,11 @@
 
     <li>
       <strong>Un negativo no descarta fractura.</strong>
-      {% if meta and meta.recall is not none %}
+      {% if meta and meta.sensibilidad is not none %}
       En el test interno, con el corte de {{ coma(umbrales.hallazgo) }}, no se clasificaron con hallazgos
       {{ miles(meta.test_FN) }} de las {{ miles(meta.test_n_positivos) }} radiografías con
-      fractura (sensibilidad por imagen {{ pct(meta.sensibilidad) }}). Por caja, el recall de
-      detección fue {{ coma(meta.recall, 3) }}: alrededor de
-      {{ ((1 - meta.recall) * 100)|round|int }} de cada 100 fracturas anotadas no se detectaron.
+      fractura (sensibilidad por imagen {{ pct(meta.sensibilidad) }}): alrededor de
+      {{ ((1 - meta.sensibilidad) * 100)|round|int }} de cada 100 radiografías con fractura no se marcaron.
       {% else %}
       El modelo en uso no tiene métricas publicadas en este sistema, así que esta página no
       informa ninguna tasa de detección.

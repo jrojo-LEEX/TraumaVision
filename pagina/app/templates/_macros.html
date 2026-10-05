@@ -69,9 +69,9 @@
           y contexto clínico antes de cualquier conducta.</dd>
 
       <dt>Qué se le escapa</dt>
-      <dd>Recall de detección {{ ("%.3f"|format(sens))|replace('.', ',') }}:
-          alrededor de {{ ((1 - sens) * 100)|round|int }} de cada 100 fracturas
-          anotadas no se detectan.
+      <dd>Sensibilidad por imagen {{ ("%.1f"|format(sens * 100))|replace('.', ',') }} %:
+          alrededor de {{ ((1 - sens) * 100)|round|int }} de cada 100 radiografías
+          con fractura no se marcan.
           <strong>Un resultado sin hallazgos no descarta fractura.</strong></dd>
 
       <dt>Dominio validado</dt>
@@ -266,12 +266,12 @@
 </div>
 {%- endmacro -%}
 
-{# Cuadrícula de fracturas no detectadas #}
-{%- macro waffle_misses(recall) -%}
-{%- set faltan = ((1 - recall) * 100)|round|int -%}
+{# Cuadrícula de radiografías con fractura que no se marcan #}
+{%- macro waffle_misses(sens) -%}
+{%- set faltan = ((1 - sens) * 100)|round|int -%}
 <figure class="waffle">
   <div class="waffle-grid" role="img"
-       aria-label="De cada 100 fracturas anotadas, alrededor de {{ faltan }} no se detectan.">
+       aria-label="De cada 100 radiografías con fractura, alrededor de {{ faltan }} no se marcan.">
     {%- for i in range(100) -%}
     {%- if i < faltan -%}<span class="wcell is-miss" style="--i: {{ i }};"></span>
     {%- else -%}<span class="wcell"></span>{%- endif -%}
@@ -279,7 +279,7 @@
   </div>
   <figcaption class="waffle-cap">
     <span class="waffle-n">{{ faltan }}<span class="waffle-unit">/100</span></span>
-    <span class="waffle-label">fracturas anotadas que el sistema <strong>no detecta</strong></span>
+    <span class="waffle-label">radiografías con fractura que el sistema <strong>no marca</strong></span>
     <span class="waffle-line">Un resultado sin hallazgos no descarta fractura.</span>
   </figcaption>
 </figure>
@@ -326,9 +326,9 @@
           real</strong>; el recall de detección es por caja.</dd>
 
       <dt>Qué se le escapa</dt>
-      <dd>Recall de detección {{ ("%.3f"|format(meta.recall))|replace('.', ',') }}:
-          alrededor de {{ ((1 - meta.recall) * 100)|round|int }} de cada 100 fracturas
-          anotadas no se detectan.
+      <dd>Sensibilidad por imagen {{ ("%.1f"|format(meta.sensibilidad * 100))|replace('.', ',') }} %:
+          alrededor de {{ ((1 - meta.sensibilidad) * 100)|round|int }} de cada 100 radiografías
+          con fractura no se marcan.
           <strong>Un resultado sin hallazgos no descarta fractura.</strong></dd>
 
       <dt>Dominio validado</dt>

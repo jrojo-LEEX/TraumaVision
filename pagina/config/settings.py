@@ -218,9 +218,9 @@ def domain_disclaimer(region=REGION_NO_INDICADA, model_version=REGION_NO_INDICAD
             "conducta clínica."
         )
 
-    recall = meta["recall"]
-    faltan = round((1 - recall) * 100)
-    coma = lambda x: ("%.3f" % x).replace(".", ",")  # noqa: E731
+    sens = meta["sensibilidad"]  # por imagen, a τ = ABNORMAL_THRESHOLD
+    faltan = round((1 - sens) * 100)
+    pct = lambda x: ("%.1f" % (x * 100)).replace(".", ",") + " %"  # noqa: E731
 
     # Modelo anterior: se aclara que las métricas son del vigente, no de este análisis.
     if model_version is not REGION_NO_INDICADA and not es_modelo_vigente(model_version):
@@ -229,8 +229,8 @@ def domain_disclaimer(region=REGION_NO_INDICADA, model_version=REGION_NO_INDICAD
             f"({model_version or 'sin registrar'}), que ya no está en uso. "
             "No se informa prioridad clínica y el resultado no debe usarse para "
             "ordenar la revisión. Las métricas publicadas del sistema corresponden "
-            f"al modelo vigente ({MODELO_VIGENTE}) y no a este resultado: recall de "
-            f"detección {coma(recall)}, medido el {meta['metrics_date']}. "
+            f"al modelo vigente ({MODELO_VIGENTE}) y no a este resultado: sensibilidad "
+            f"por imagen {pct(sens)}, medida el {meta['metrics_date']}. "
             "UN INFORME SIN HALLAZGOS NO DESCARTA FRACTURA. "
             "La confianza que muestra el sistema es el score del detector y no debe "
             "leerse como probabilidad de fractura."
@@ -246,9 +246,9 @@ def domain_disclaimer(region=REGION_NO_INDICADA, model_version=REGION_NO_INDICAD
         "ALCANCE Y LIMITACIONES: el modelo está validado ÚNICAMENTE sobre "
         f"{meta['label']}, entrenado y evaluado sobre {meta['description']}. "
         "Fuera de ese dominio este informe no tiene validez. "
-        f"Recall de detección {coma(recall)}, medido el {meta['metrics_date']} sobre "
+        f"Sensibilidad por imagen {pct(sens)}, medida el {meta['metrics_date']} sobre "
         f"un conjunto de test de {meta['test_n']} imágenes separado por paciente: "
-        f"alrededor de {faltan} de cada 100 fracturas anotadas no se detectan, de modo "
+        f"alrededor de {faltan} de cada 100 radiografías con fractura no se marcan, de modo "
         "que UN INFORME SIN HALLAZGOS NO DESCARTA FRACTURA. "
         "La confianza que muestra el sistema es el score del detector y no debe "
         "leerse como probabilidad de fractura. "

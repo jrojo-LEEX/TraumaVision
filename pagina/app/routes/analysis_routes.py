@@ -98,7 +98,7 @@ def _base_context(request: Request, user: User) -> dict:
         "max_zip_mb": MAX_ZIP_SIZE_MB,
         "abnormal_threshold": ABNORMAL_THRESHOLD,
         "confidence_threshold": CONFIDENCE_THRESHOLD,
-        "model_sensitivity": (meta or {}).get("recall", 0.0),
+        "model_sensitivity": (meta or {}).get("sensibilidad", 0.0),
         "dominio_label": (meta or {}).get("label", DEFAULT_REGION),
         "meta": meta,
         "modelo_vigente": MODELO_VIGENTE,
